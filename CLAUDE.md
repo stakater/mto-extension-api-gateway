@@ -69,6 +69,7 @@ names of `docs/acceptance.md` (`team-a`, `orders`, `shop`) and
 | `docs/roadmap.md` | Phases and user stories with lifecycle status. |
 | `docs/acceptance.md` | The security contract as testable scenarios. |
 | `docs/design.md` | What is rendered, the baseline and its render check, the allowed-API rule, names, status, limits. |
+| `docs/raci.md` | Who owns what — the copy-the-chart world today vs this extension; platform team vs API team. |
 | `docs/gateway-baseline.md` | What Service Mesh, Gateway API, Connectivity Link and Template Operator give, with sources; open questions. |
 | `docs/diagrams.md` | C4 and sequence diagrams. |
 | `docs/adr/` | Architecture Decision Records. |

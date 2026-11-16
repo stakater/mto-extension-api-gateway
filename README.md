@@ -44,6 +44,7 @@ part that makes it safe,
 | [Roadmap](docs/roadmap.md) | phases and user stories |
 | [Acceptance](docs/acceptance.md) | the security contract as testable scenarios |
 | [Design](docs/design.md) | what is rendered, the baseline, the allowed-API rule, limits |
+| [Ownership & RACI](docs/raci.md) | who owns what without the extension and with it; platform team vs API team |
 | [Gateway baseline](docs/gateway-baseline.md) | what Service Mesh, Gateway API, Connectivity Link and Template Operator give, with sources |
 | [Diagrams](docs/diagrams.md) | C4 and sequence diagrams |
 | [ADRs](docs/adr/README.md) | decisions and rejected alternatives |
