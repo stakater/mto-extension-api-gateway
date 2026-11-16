@@ -54,9 +54,10 @@ authorizes on claim values (K3), and sets request headers from the token
 - **Keep the `EnvoyFilter`s.** Rejected: unsupported in production, and they
   break silently on upgrade — exactly when nobody looks.
 - **Istio-native only (`RequestAuthentication` with `outputClaimToHeaders`,
-  `AuthorizationPolicy` on the gateway, M6–M7) and no rate limit.** Kept as
-  the fallback if G.0 finds a blocker: it covers token, allowed-API rule and
-  headers without `EnvoyFilter`, but has no supported rate limit and no
-  defaults-and-overrides model (ADR-0004).
+  `AuthorizationPolicy` on the gateway, M6–M7) and no rate limit.** Kept in
+  two ways: as the token floor next to Connectivity Link (ADR-0004), and as
+  the fallback if G.0 finds a blocker. Alone, it covers token, allowed-API
+  rule and headers without `EnvoyFilter`, but has no supported rate limit and
+  no defaults-and-overrides model.
 - **A separate API management product.** Rejected: out of scope (vision,
   non-goals), and it moves the gateway away from Gateway API.

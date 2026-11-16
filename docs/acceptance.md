@@ -21,18 +21,24 @@ Rules for every live scenario:
 
 Fixture:
 
-- Tenants `team-a` (namespaces `team-a-dev`, `team-a-test`), `team-b`
-  (`team-b-dev`) and `team` (`team-core`), whose name is a prefix of `team-a`'s.
+- Tenants `team-a` (namespaces `team-a-dev`, `team-a-test`, and
+  `team-a-outside`, which is not in the mesh), `team-b` (`team-b-dev`) and
+  `team` (`team-core`), whose name is a prefix of `team-a`'s. `team-a` is
+  granted the extra hostname `api.team-a.example.org`.
 - APIs (annotated `HTTPRoute`s with an echo backend):
   `orders` in `team-a-dev` (`/orders/v2` → `/orders/v1`),
   `billing` in `team-b-dev`, and `a-orders` in `team-core`.
-- A route `plain` in `team-a-dev`, attached to `team-a`'s gateway, without the
-  annotation.
+- Routes without the annotation, attached to `team-a`'s gateway: `plain` (on
+  `*.team-a.apis.example.com`) and `plain-extra` (on `api.team-a.example.org`),
+  both in `team-a-dev`.
+- Annotated routes whose backend can't be locked: `legacy` in `team-a-dev`
+  (an `ExternalName` Service) and `stray` in `team-a-outside`.
 - RHBK clients: `shop` (`allowed_apis: [api.team-a.orders]`, tier `silver`),
   `bank` (`[api.team-b.billing]`, `gold`), `near` (`[api.team-a.orders2]`,
   `silver`), `core` (`[api.team.a-orders]`, `silver`), `bare` (no
   `allowed_apis`, no tier).
-- A pod `intruder` in `team-a-test`, in the mesh.
+- A pod `intruder` in `team-a-test`, in the mesh, and a pod `outsider` in
+  `team-a-outside`, not in the mesh.
 - A user `alice` with the Multi-Tenant Operator's editor role in `team-a`.
 
 ## Tenant separation
@@ -44,8 +50,9 @@ accepted (route status `Accepted=False`); a request for its host through
 
 **AC-ISO-2 — A host outside the tenant's hostnames is never served.** *(L)* A
 route in `team-a-dev` for `x.team-b.apis.example.com` doesn't attach
-(`Accepted=False`); `team-a`'s gateway returns `404` for that host. A route for
-`dev.team-a.apis.example.com` attaches.
+(`Accepted=False`, listed as `unattached`); a request for that host through
+the real entry point never reaches `team-a`'s backend. A route for
+`dev.team-a.apis.example.com` attaches and serves.
 
 **AC-ISO-3 — A caller for another tenant's API is refused.** *(L)* `bank` is
 refused `orders` with `403`; `shop` gets `200` on the same path.
@@ -56,13 +63,25 @@ rendered for tenant `team` matches a value that starts `api.team-a.`. `core` is
 refused `orders` (`403`) and allowed `a-orders` (`200`).
 
 **AC-ISO-5 — The backend answers only its tenant gateway.** *(L)* `intruder`
-calling Service `orders` directly is refused by the mesh; the same request
-through `team-a`'s gateway, as `shop`, gets `200`.
+and `outsider` calling Service `orders` directly are refused; the same request
+through `team-a`'s gateway, as `shop`, gets `200`. After a cluster admin adds
+an `ALLOW` policy for any source on `orders`' pods, `intruder` is still
+refused.
 
 **AC-ISO-6 — Tenants can't create gateways, policies or filters.** *(L)* As
-`alice`, creating a `Gateway`, `AuthPolicy`, `RateLimitPolicy`, `EnvoyFilter`
-or `WasmPlugin` in `team-a-dev` is refused (RBAC or admission, with the
-reason); creating an `HTTPRoute` is allowed.
+`alice`, creating a `Gateway`, `AuthPolicy`, `RateLimitPolicy`, `EnvoyFilter`,
+`WasmPlugin` or `TrafficExtension` in `team-a-dev`, labelling a pod
+`istio.io/dataplane-mode=none`, or creating an OpenShift `Route` for a host
+under `apis.example.com` is refused (RBAC or admission, with the reason);
+creating an `HTTPRoute` is allowed.
+
+**AC-ISO-7 — A backend the lock can't cover serves nothing.** *(R+L)* No
+route-level `AuthPolicy` is rendered for `legacy` or `stray`; both are refused
+for every caller and listed as `invalid` and `outside-mesh`. `orders` serves.
+
+**AC-ISO-8 — Every listener denies by default.** *(R+L)* Each listener of
+`team-a`'s gateway, the extra hostname's included, has its own default deny;
+`plain-extra` is refused for every caller, as `plain` is.
 
 ## Authentication and authorization
 
@@ -87,9 +106,15 @@ fixture caller is refused on `plain` (`403`); `plain` is listed as "not an
 API" in `team-a`'s status ConfigMap.
 
 **AC-AUTH-6 — A route-level policy can't weaken the baseline.** *(L)* As a
-cluster admin (past admission), add a route-level `AuthPolicy` on `orders`
-that allows anonymous access. A request without a token is still refused with
-`401`. Remove it; nothing else changes.
+cluster admin (past admission), add to `orders`, one at a time, a route-level
+`AuthPolicy` with: an anonymous authentication source; a second issuer whose
+tokens carry the platform audience; a top-level `when` that is false. In every
+case a request without a token, or with the second issuer's token, never gets
+a `2xx`; `shop` still gets `200`.
+
+**AC-AUTH-7 — No moment without a token check.** *(L)* From the moment a new
+annotated route is accepted, a request to it without a token, sent in a
+tight loop, never gets a `2xx`.
 
 ## Rate limits
 
@@ -97,9 +122,10 @@ that allows anonymous access. A request without a token is still refused with
 in a loop gets `429` after its tier's limit within the window; the first
 requests got `200`.
 
-**AC-RL-2 — A caller without a tier gets the lowest.** *(L)* A token with
-`allowed_apis: [api.team-a.orders]` and no tier claim gets `429` at the `bronze`
-limit.
+**AC-RL-2 — A caller without a known tier gets the lowest.** *(R+L)* A token
+with `allowed_apis: [api.team-a.orders]` and no tier claim, and one with tier
+`platinum` (not defined by the platform), each get `429` at the `bronze`
+limit. Render: every token matches at least one tier predicate.
 
 **AC-RL-3 — Counters are per caller.** *(L)* While `shop` is at its limit,
 `core` calling `a-orders` and a second `silver` client calling `orders` still
@@ -111,9 +137,11 @@ get `200`.
 rendered object is an `EnvoyFilter`, a `WasmPlugin` or a `TrafficExtension`.
 
 **AC-R-2 — Every tenant gateway has its baseline.** *(R)* For every tenant:
-one `Gateway`, its autoscaling ConfigMap, a gateway-level `AuthPolicy` and a
-gateway-level `RateLimitPolicy`, both with `overrides`. Removing any of them
-from the template fails the render check (mutation test).
+one `Gateway`, its autoscaling ConfigMap, the Istio token floor, a default
+deny per listener, a gateway-level `AuthPolicy` with `overrides`, the fixed
+`when`, the issuer pin and the `azp` and `tier` export, and a gateway-level
+`RateLimitPolicy` with `overrides`. Removing any of them from the template
+fails the render check (mutation test).
 
 **AC-R-3 — No security switch reaches a tenant.** *(R)* The per-tenant chart's
 values schema has no key for the issuer, audience, claim names, header names,
@@ -128,6 +156,11 @@ setting without the tenant or the API in it fails the render.
 listener has `allowedRoutes.namespaces.from: Selector` on
 `stakater.com/tenant: <tenant>` and hostname `*.<tenant>.<base domain>` (or a
 granted extra hostname); no listener has `from: All`.
+
+**AC-R-6 — Route-level policies can't weaken the baseline.** *(R)* No
+rendered route-level `AuthPolicy` has an `authentication` rule, a top-level
+`when`, or a rule named like a baseline rule; a fixture that adds one fails
+the render check.
 
 ## Lifecycle
 
@@ -153,10 +186,13 @@ Operator; AC-AUTH-2 passes afterwards.
 runs at the platform's minimum replicas; under load it scales up and back down;
 a `PodDisruptionBudget` keeps one pod during a node drain.
 
-**AC-OPS-2 — Problems are visible.** *(R+L)* `team-a`'s status ConfigMap lists:
-a route in a namespace outside the mesh, two routes with the same API name, a
-route without the annotation, a route for a host outside its hostnames. The
-skipped-tenants ConfigMap lists a tenant whose name is not a DNS label.
+**AC-OPS-2 — Problems are visible.** *(R+L)* `team-a`'s status ConfigMaps
+list: `stray` as `outside-mesh`, `legacy` as `invalid`, a second route that
+reuses `orders` as a duplicate (the older route keeps serving), `plain` as
+not an API, a route for a host outside the tenant's hostnames as
+`unattached`. The skipped-tenants ConfigMap lists a tenant whose name is not
+a DNS label, and an extra hostname that falls inside another tenant's
+hostnames.
 
 **AC-OPS-3 — Upgrades keep the contract.** *(L)* The whole suite is green
 before and after a Service Mesh minor upgrade, with no chart change.

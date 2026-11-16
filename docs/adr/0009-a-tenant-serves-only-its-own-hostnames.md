@@ -16,8 +16,13 @@ with a `hostname` only accepts routes whose hostnames intersect it (A3).
   (`apis.example.com`).
 - The platform may grant a tenant extra hostnames (bootstrap value, per
   tenant). Each extra hostname gets its own listener on that tenant's gateway.
-  The parent refuses to render a hostname granted to two tenants and lists the
-  conflict (design §7).
+  Each extra listener gets its own default deny (ADR-0004). The parent
+  refuses a hostname granted to two tenants, or one that falls inside another
+  tenant's `*.<tenant>.<base domain>` (a wildcard intersection, not an
+  equality), and lists the conflict (design §7).
+- Tenants can't claim a host under the base domain at the entry point either:
+  the base domain has its own entry point, and admission refuses a tenant's
+  OpenShift `Route` under it (ADR-0008, design §9).
 - TLS: one certificate per listener, from a platform-named issuer (Q10).
 
 ## Consequences

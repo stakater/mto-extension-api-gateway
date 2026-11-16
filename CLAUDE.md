@@ -30,17 +30,24 @@ writing any chart.
 1. **No `EnvoyFilter`, `WasmPlugin` or `TrafficExtension` in any rendered
    output** (ADR-0003). Connectivity Link's own managed `EnvoyFilter`s are the
    product's, not ours.
-1. **The security baseline is a Gateway-level override** (ADR-0004): token,
-   tenant floor, header replacement and tiers. A listener-level default denies
-   everything a route doesn't allow. No security setting is a per-tenant
-   value; the per-tenant chart has no switch for any of it.
+1. **The security baseline is a Gateway-level override** (ADR-0004), with
+   `strategy: merge`, a fixed `when` and a pinned issuer: token, tenant floor,
+   header replacement, the `azp`/`tier` export and tiers. An Istio token floor
+   sits under it, and a default deny on every listener refuses everything a
+   route doesn't allow. A route-level policy never has an `authentication`
+   rule or a `when`. No security setting is a per-tenant value.
 1. **The allowed-API rule is derived and closed** (ADR-0006):
    `api.<tenant>.<api>`, exact or followed by `.`; never a typed pattern,
    never a wildcard.
 1. **A listener takes only its tenant** (ADR-0002, ADR-0009):
    `from: Selector` on `stakater.com/tenant`, a hostname under the tenant's
    name; never `from: All`.
-1. **Every API backend is locked to its tenant gateway** (ADR-0007).
+1. **Every API backend is locked to its tenant gateway** (ADR-0007) by a
+   `DENY` on its target ports, never an `ALLOW`. **Fail closed:** a backend
+   that can't be locked gets no route-level policy, so its route serves
+   nothing.
+1. **The gateway class is `istio`**, from the ambient mesh's own control
+   plane, never `openshift-default` (K1).
 1. **Tenants create `HTTPRoute`s only** (ADR-0008).
 1. **Templates never use sync mode `off`** (T3): an upgrade must reach every
    tenant.

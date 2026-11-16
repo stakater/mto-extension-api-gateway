@@ -24,7 +24,9 @@ target (K8), so a route-level policy lives in a tenant namespace.
     1. Admission: a `ValidatingAdmissionPolicy` refuses a tenant's
        `AuthPolicy`, `RateLimitPolicy`, `Gateway`, `EnvoyFilter`,
        `WasmPlugin` and `TrafficExtension`, and an `HTTPRoute` with a
-       `parentRef` to another tenant's gateway. The policy applies to tenant
+       `parentRef` to another tenant's gateway; the label
+       `istio.io/dataplane-mode` on a tenant pod (M8); and a tenant's OpenShift
+       `Route` for a host under the base domain. The policy applies to tenant
        namespaces only: Connectivity Link's own `EnvoyFilter`s in the gateway
        namespace (K7) are not touched. When the Service Mesh extension is installed, its policies
        cover the shared kinds and this extension adds only its own.

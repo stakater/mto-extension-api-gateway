@@ -37,7 +37,7 @@ As the engineer building the extension, I want every open Service Mesh,
 Gateway API, Connectivity Link and Template Operator question answered on a
 live cluster, so that the charts rest on observed behaviour.
 
-Done: all open questions (Q1–Q12) answered with evidence in
+Done: all open questions (Q1–Q13) answered with evidence in
 `docs/spikes/g0-findings.md`, from hand-written objects (no chart yet) on an
 OpenShift lab; each ADR Accepted or superseded; `design.md` and
 `gateway-baseline.md` updated where an answer changed them. Planning:
@@ -55,11 +55,12 @@ another's gateway.
 
 Done: bootstrap chart with the parent `Template` and `TemplateInstance`; per
 valid `Tenant`, `Gateway` `<tenant>` in the gateway namespace with the listener
-of ADR-0002 and ADR-0009 and its autoscaling ConfigMap; invalid and reserved
+of ADR-0002 and ADR-0009, its autoscaling ConfigMap and the entry point chosen
+in G.0; invalid and reserved
 tenant names skipped and listed; the render harness (golden fixtures, CRD
 validation against vendored Gateway API and Connectivity Link CRDs, the
 security-baseline check) wired into `make verify`. Satisfies **AC-ISO-1**,
-**AC-ISO-2**, **AC-R-1**, **AC-R-5**, **AC-LIFE-1**.
+**AC-ISO-2**, **AC-R-1**, **AC-R-5**.
 
 **Story G.2 — The security baseline** 📝 *Draft*
 
@@ -67,12 +68,13 @@ As a security owner, I want every tenant gateway to check the token, replace
 caller headers from the token and deny by default, so that no API is served
 without the checks and no route can weaken them.
 
-Done: gateway-level `AuthPolicy` with `overrides` (issuer, audience, header
-names from bootstrap values) and the default deny; the render check and its
-mutation tests; live: no token `401`, invalid tokens `401`, caller headers
-replaced, a hand-made weakening policy has no effect. Satisfies
-**AC-AUTH-1**, **AC-AUTH-2**, **AC-AUTH-4**, **AC-AUTH-6**, **AC-R-2**,
-**AC-R-3**.
+Done: the Istio token floor; gateway-level `AuthPolicy` with `overrides`
+(`merge`, fixed `when`, issuer pin, audience, tenant floor, header names and
+the `azp`/`tier` export from bootstrap values); a default deny per listener;
+the render checks and their mutation tests; live, before any API exists: no
+token or an invalid token refused, a valid token refused by the default deny,
+no moment without a token check on a new route. Satisfies **AC-R-2**,
+**AC-R-3**, **AC-R-6**, **AC-ISO-8**, **AC-AUTH-7**, **AC-LIFE-1**.
 
 **Story G.3 — An annotated route becomes an API** 📝 *Draft*
 
@@ -82,28 +84,33 @@ one wrong.
 
 Done: the per-tenant chart and its child `TemplateInstance`; per annotated
 route, a route-level `AuthPolicy` with the derived, closed rule of ADR-0006;
-duplicates and un-annotated routes reported; live: `shop` `200`, `bank`,
-`near`, `bare` `403`, `plain` serves nothing, the prefix tenant isolated.
-Satisfies **AC-ISO-3**, **AC-ISO-4**, **AC-AUTH-3**, **AC-AUTH-5**, **AC-R-4**.
+duplicates (oldest wins) and un-annotated routes reported; live: `shop`
+`200` with headers replaced, no or invalid token `401`, `bank`, `near`,
+`bare` `403`, `plain` serves nothing, the prefix tenant isolated, weakening
+route-level policies have no effect. Satisfies **AC-ISO-3**, **AC-ISO-4**,
+**AC-AUTH-1**, **AC-AUTH-2**, **AC-AUTH-3**, **AC-AUTH-4**, **AC-AUTH-5**,
+**AC-AUTH-6**, **AC-R-4**.
 
 **Story G.4 — The backend lock** 📝 *Draft*
 
 As an API team, I want my backend to accept calls only from my tenant's
 gateway, so that nobody in the cluster can skip the gateway's checks.
 
-Done: per annotated route, an Istio `AuthorizationPolicy` (L4, ztunnel) on the
-backend's pods allowing only the tenant gateway's service account and the
-platform's monitoring identity; live: `intruder` refused, the gateway allowed.
-Satisfies **AC-ISO-5**.
+Done: per backend Service of an annotated route, an Istio
+`AuthorizationPolicy` (L4, ztunnel): `DENY` on the target ports from every
+identity but the tenant gateway's; no route-level policy for a backend that
+can't be locked (fail closed); live: `intruder` and `outsider` refused, also
+after an extra `ALLOW`, the gateway allowed, `legacy` and `stray` serve
+nothing. Satisfies **AC-ISO-5**, **AC-ISO-7**.
 
 **Story G.5 — Rate limit tiers** 📝 *Draft*
 
-As a platform team, I want each caller limited by its tier on every API, so
-that one caller can't exhaust a tenant's gateway.
+As a platform team, I want each authenticated caller limited by its tier on
+every API, so that no caller uses more than its share of a tenant's gateway.
 
 Done: gateway-level `RateLimitPolicy` with `overrides`, tiers and the tier
-claim name from bootstrap values, `bronze` when the claim is missing, counted
-per caller; live: `429` at the limit, per-caller counters. Satisfies
+claim name from bootstrap values, `bronze` as the catch-all for a missing or
+unknown tier, counted per caller; live: `429` at the limit, per-caller counters. Satisfies
 **AC-RL-1**, **AC-RL-2**, **AC-RL-3**.
 
 ---
@@ -158,6 +165,15 @@ API, delivered through the Multi-Tenant Operator's telemetry gateways.
 **Story G.15 — Documentation** 📝 *Draft* — the extension's page in the
 Multi-Tenant Operator docs, and a tutorial that fits the free edition (two
 tenants).
+
+**Story G.16 — Backends outside the cluster** 📝 *Draft* — an API whose
+backend is outside the cluster (today an `ExternalName` Service, refused in
+v1): a platform-approved list of external hosts per tenant, reached through
+the mesh's egress, with what the lock can and can't promise there.
+
+**Story G.17 — Internal callers of an API backend** 📝 *Draft* — an API team
+names ServiceAccounts of its own namespace that may also call the backend's
+API ports, so internal callers don't have to go through the gateway.
 
 ---
 

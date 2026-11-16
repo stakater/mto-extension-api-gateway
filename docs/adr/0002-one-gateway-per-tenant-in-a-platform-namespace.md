@@ -33,8 +33,8 @@ plans platform-owned gateways in a platform namespace, with
 
 ## Consequences
 
-- Gateways per cluster = tenants with at least one API, not APIs ×
-  environments.
+- Gateways per cluster = tenants (or the tenants the platform lists), not
+  APIs × environments. An idle gateway runs at the autoscaler's minimum.
 - The APIs of one tenant share gateway pods: a load peak on one API reaches the
   others of the same tenant. Autoscaling and the per-caller rate limit reduce
   this; G.12 gives an API its own gateway when it needs one.

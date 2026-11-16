@@ -32,17 +32,19 @@ flowchart TB
     gwA[Gateway team-a<br/>listener *.team-a.apis.example.com<br/>routes from stakater.com/tenant=team-a]
     podsA[team-a-istio pods<br/>autoscaled]
     baseA[AuthPolicy team-a-baseline<br/>overrides: JWT, tenant floor, headers]
-    denyA[AuthPolicy team-a-default-deny<br/>defaults: refuse]
+    denyA[AuthPolicy team-a-deny-tenant<br/>defaults: refuse, one per listener]
+    floorA[RequestAuthentication + DENY<br/>team-a-jwt-floor: no token, no entry]
     rlA[RateLimitPolicy team-a-tiers<br/>overrides: tiers per caller]
     gwA --> podsA
     baseA -.->|targets| gwA
     denyA -.->|targets| gwA
     rlA -.->|targets| gwA
+    floorA -.->|targets| gwA
   end
   subgraph tenantns[Tenant namespace team-a-dev]
     route[HTTPRoute orders<br/>annotation api: orders]
     apA[AuthPolicy api-gateway-orders<br/>allowed-API rule api.team-a.orders]
-    lock[AuthorizationPolicy api-gateway-orders<br/>only team-a-istio may call]
+    lock[AuthorizationPolicy api-gateway-orders-orders<br/>DENY all but team-a-istio on the API port]
     svc[Service orders]
     route -->|parentRef| gwA
     route -->|backendRef| svc
@@ -78,6 +80,7 @@ sequenceDiagram
   K-->>C: JWT (azp=shop, allowed_apis=[api.team-a.orders], tier=silver)
   C->>E: GET dev.team-a.apis.example.com/orders/v2 + token
   E->>G: re-encrypt
+  Note over G: Istio token floor: no valid token from the issuer, refused
   G->>A: check request
   A-->>G: 401 if token missing or invalid
   A-->>G: 403 if no api.team-a.* value (tenant floor)
@@ -87,7 +90,7 @@ sequenceDiagram
   L-->>G: 429 if over the limit
   G->>Z: /orders/v1 with x-sub, x-roles
   Z->>B: mTLS from team-a-istio identity
-  Note over Z,B: backend lock: any other identity is refused
+  Note over Z,B: backend lock (DENY): any other identity, or none, is refused
   B-->>C: 200
 ```
 
@@ -108,7 +111,7 @@ sequenceDiagram
   S->>S: deploy team-a-istio with autoscaler
   D->>D: write HTTPRoute orders + annotation api: orders
   T->>T: child sees annotated route in team-a-dev
-  T->>D: AuthPolicy api-gateway-orders + backend lock + status ConfigMap
+  T->>D: AuthPolicy + backend lock (only if every backend can be locked) + status
   Note over D: shop gets 200, others 401, 403 or 429
 ```
 

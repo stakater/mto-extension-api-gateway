@@ -11,7 +11,8 @@ not observe: Connectivity Link policies on a gateway whose backends run in
 ambient mode, a Gateway-level override composed with a listener-level default
 deny, a CEL predicate on a list claim, header replacement on the shipped
 wasm-shim, an L4 backend lock without a waypoint, and Template Operator
-rendering Gateway API and Connectivity Link kinds from list parameters. Twelve
+rendering Gateway API and Connectivity Link kinds from list parameters, and
+the window before a new route's policies are programmed. Thirteen
 questions (`gateway-baseline.md`, "Open questions") are load-bearing. Answer
 them with hand-written objects before any chart is written, so the charts
 don't carry an assumption that a product doesn't meet.
@@ -56,6 +57,7 @@ Files under `docs/spikes/g0/` (hand-written, no chart):
 | `acceptance.sh` | the live AC scenarios as `curl` calls with tokens from RHBK, printing status code and echoed headers |
 | `q6-template.yaml` | a `Template` + child `TemplateInstance` with `objectFieldRef` LIST parameters for `HTTPRoute` and `Service` |
 | `q9-rbac.sh` | `kubectl auth can-i` as a tenant editor for every kind in ADR-0008 |
+| `q13-window.sh` | a new route called without a token from the moment it is accepted |
 
 Steps, each recorded in `docs/spikes/g0-findings.md` with the command, the
 output, and the answer to its question:
@@ -75,8 +77,12 @@ output, and the answer to its question:
 1. Q6: apply `q6-template.yaml`; confirm the child gets the routes as a list and
    renders an `AuthPolicy` into `team-a-dev`; record the RBAC it needed.
 1. Q9: run `q9-rbac.sh`; record what a tenant editor can create today.
-1. Q10, Q11: record the entry point and certificate setup used; check
-   `x-request-id` reaches the echo backend.
+1. Q10, Q11: record the entry point and certificate setup used, and try to
+   claim a host under the base domain with a tenant-made OpenShift `Route`;
+   check `x-request-id` reaches the echo backend.
+1. Q13: with the Istio token floor removed, create a new route and call it
+   without a token in a tight loop from the moment it is accepted; record any
+   `2xx`. Repeat with the floor in place.
 
 ## Tests (red first)
 
@@ -94,7 +100,7 @@ automation (G.11). Performance and load beyond what Q7 and Q12 need.
 
 ## Done means
 
-The roadmap Done line: all twelve questions answered with evidence in
+The roadmap Done line: all thirteen questions answered with evidence in
 `docs/spikes/g0-findings.md`; every ADR Accepted or superseded by a new ADR;
 `design.md` and `gateway-baseline.md` updated where an answer changed them
 (VERIFY markers resolved); `make verify` green; G.1's planning doc can start
