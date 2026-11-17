@@ -17,9 +17,10 @@ with a `hostname` only accepts routes whose hostnames intersect it (A3).
 - The platform may grant a tenant extra hostnames (bootstrap value, per
   tenant). Each extra hostname gets its own listener on that tenant's gateway.
   Each extra listener gets its own default deny (ADR-0004). The parent
-  refuses a hostname granted to two tenants, or one that falls inside another
-  tenant's `*.<tenant>.<base domain>` (a wildcard intersection, not an
-  equality), and lists the conflict (design §7).
+  refuses an extra hostname that overlaps the base domain (reserved for
+  tenant names, including tenants created later) or overlaps another
+  tenant's extra hostname (a wildcard intersection, not an equality), and
+  lists the refusal (design §7).
 - Tenants can't claim a host under the base domain at the entry point either:
   the base domain has its own entry point, and admission refuses a tenant's
   OpenShift `Route` under it (ADR-0008, design §9).

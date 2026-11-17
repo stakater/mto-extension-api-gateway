@@ -1,4 +1,4 @@
-# ADR-0008: Tenants never create gateways, gateway policies or filters
+# ADR-0008: Tenants never create gateways, gateway policies or filters directly
 
 - **Status:** Proposed
 - **Date:** 2026-11-16
@@ -16,7 +16,10 @@ target (K8), so a route-level policy lives in a tenant namespace.
 
 - **Only the platform and Template Operator create** `Gateway`s, `AuthPolicy`,
   `RateLimitPolicy` and Istio `AuthorizationPolicy` objects for this
-  extension. Tenants create `HTTPRoute`s only.
+  extension. Tenants create `HTTPRoute`s, and ask for their gateway with a
+  parameterless `TemplateInstance` of `api-gateway` (ADR-0002); Template
+  Operator renders the gateway in strict mode, so the tenant can't edit or
+  delete it.
 - **Defence in depth, in this order:**
     1. RBAC: the tenant roles grant no write on those kinds (Q9 checks what the
        Multi-Tenant Operator's roles and the products' aggregated roles give
@@ -26,10 +29,13 @@ target (K8), so a route-level policy lives in a tenant namespace.
        `WasmPlugin` and `TrafficExtension`, and an `HTTPRoute` with a
        `parentRef` to another tenant's gateway; the label
        `istio.io/dataplane-mode` on a tenant pod (M8); and a tenant's OpenShift
-       `Route` for a host under the base domain. The policy applies to tenant
-       namespaces only: Connectivity Link's own `EnvoyFilter`s in the gateway
-       namespace (K7) are not touched. When the Service Mesh extension is installed, its policies
-       cover the shared kinds and this extension adds only its own.
+       `Route` for a host under the base domain. The policy matches requests
+       from tenant users only. It lets through Template Operator, which renders
+       the gateway and its policies in the tenant's namespace (ADR-0002), and
+       the Connectivity Link operator, which creates its own `EnvoyFilter`s in
+       the gateway's namespace (K7). When the Service Mesh extension is
+       installed, its policies cover the shared kinds and this extension adds
+       only its own.
     1. Overrides: even a policy that got through can't weaken the baseline
        (ADR-0004).
 

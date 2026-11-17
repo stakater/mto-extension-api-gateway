@@ -1,0 +1,581 @@
+# Source: shim/templates/render.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  labels:
+    stakater.com/tenant: "1234"
+  name: a
+  namespace: n1234
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    labels:
+      stakater.com/tenant: "1234"
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: a-infra
+  listeners:
+    - allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              stakater.com/tenant: "1234"
+      hostname: '*.1234.apis.example.com'
+      name: tenant
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: a-tls
+        mode: Terminate
+---
+# Source: shim/templates/render.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  labels:
+    stakater.com/tenant: team-a
+  name: edge
+  namespace: team-a-test
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    labels:
+      stakater.com/tenant: team-a
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: edge-infra
+  listeners:
+    - allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              stakater.com/tenant: team-a
+      hostname: '*.team-a.apis.example.com'
+      name: tenant
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: edge-tls
+        mode: Terminate
+    - allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              stakater.com/tenant: team-a
+      hostname: api.team-a.example.org
+      name: extra-1
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: edge-tls-extra-1
+        mode: Terminate
+---
+# Source: shim/templates/render.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  labels:
+    stakater.com/tenant: team-b
+  name: api-gateway
+  namespace: team-b-dev
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    labels:
+      stakater.com/tenant: team-b
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: api-gateway-infra
+  listeners:
+    - allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              stakater.com/tenant: team-b
+      hostname: '*.team-b.apis.example.com'
+      name: tenant
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: api-gateway-tls
+        mode: Terminate
+---
+# Source: shim/templates/render.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  labels:
+    stakater.com/tenant: team
+  name: gw
+  namespace: team-core
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    labels:
+      stakater.com/tenant: team
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: gw-infra
+  listeners:
+    - allowedRoutes:
+        kinds:
+          - group: gateway.networking.k8s.io
+            kind: HTTPRoute
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              stakater.com/tenant: team
+      hostname: '*.team.apis.example.com'
+      name: tenant
+      port: 443
+      protocol: HTTPS
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: gw-tls
+        mode: Terminate
+---
+# Source: shim/templates/render.yaml
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata:
+  name: api-gateway
+  namespace: mto-api-gateways
+spec:
+  gotemplate: |
+    {{- /* The team's side: one TemplateInstance of this Template, in one of the
+           tenant's namespaces, asks for the tenant's API gateway. It renders into
+           the instance's own namespace, and nowhere else.
+
+           Trust: the instance has no parameters (every one is disableOverride, set
+           by the platform's parent). The tenant comes from .parameters.tenantOf,
+           keyed by the instance's namespace, never from the instance's labels or
+           anything else the team writes. Every outcome renders the status
+           ConfigMap <name>-status, so the team sees why it has, or hasn't, a
+           gateway. */ -}}
+    {{- $p := .parameters }}
+    {{- $ns := .instance.namespace }}
+    {{- $name := .instance.name }}
+    {{- $label := $p.tenantLabelKey }}
+    {{- $base := $p.baseDomain }}
+    {{- $tenant := toString (index $p.tenantOf $ns | default "") }}
+    {{- $me := printf "%s/%s" $ns $name }}
+    {{- $owner := toString (index $p.owner $tenant | default "") }}
+    {{- $why := "" }}
+    {{- if not $tenant }}
+    {{- $why = printf "namespace %s does not belong to a tenant that may request an API gateway" $ns }}
+    {{- else if or (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $name)) (gt (len $name) 48) }}
+    {{- $why = "the TemplateInstance name must be a DNS label of at most 48 characters: it names the Gateway and its objects" }}
+    {{- else if ne $owner $me }}
+    {{- $why = printf "tenant %s already has its API gateway, from TemplateInstance %s; a tenant has one" $tenant (default "(none yet: the platform has not seen this request; it retries)" $owner) }}
+    {{- end }}
+    {{- $listeners := list }}
+    {{- $hosts := list }}
+    {{- if not $why }}
+    {{- $listeners = append $listeners (dict "name" "tenant" "host" (printf "*.%s.%s" $tenant $base) "secret" (printf "%s-tls" $name)) }}
+    {{- $hosts = append $hosts (printf "*.%s.%s" $tenant $base) }}
+    {{- $i := 0 }}
+    {{- range $h := (index $p.extraHostnames $tenant | default list) }}
+    {{- $i = add1 $i }}
+    {{- $listeners = append $listeners (dict "name" (printf "extra-%d" $i) "host" (toString $h) "secret" (printf "%s-tls-extra-%d" $name $i)) }}
+    {{- $hosts = append $hosts (toString $h) }}
+    {{- end }}
+    {{- end }}
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ printf "%s-status" $name | quote }}
+      namespace: {{ $ns | quote }}
+    data:
+      {{- if $why }}
+      status: refused
+      reason: {{ $why | quote }}
+      {{- else }}
+      status: ok
+      tenant: {{ $tenant | quote }}
+      gateway: {{ $name | quote }}
+      hostnames: {{ join "," $hosts | quote }}
+      {{- end }}
+    {{- if not $why }}
+    ---
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata:
+      name: {{ $name | quote }}
+      namespace: {{ $ns | quote }}
+      labels:
+        {{ $label }}: {{ $tenant | quote }}
+    spec:
+      gatewayClassName: {{ $p.gatewayClassName }}
+      infrastructure:
+        labels:
+          {{ $label }}: {{ $tenant | quote }}
+        parametersRef:
+          group: ""
+          kind: ConfigMap
+          name: {{ printf "%s-infra" $name | quote }}
+      listeners:
+        {{- range $l := $listeners }}
+        - name: {{ $l.name }}
+          hostname: {{ $l.host | quote }}
+          port: {{ $p.port }}
+          protocol: HTTPS
+          tls:
+            mode: Terminate
+            certificateRefs:
+              - kind: Secret
+                name: {{ $l.secret | quote }}
+          allowedRoutes:
+            kinds:
+              - group: gateway.networking.k8s.io
+                kind: HTTPRoute
+            namespaces:
+              from: Selector
+              selector:
+                matchLabels:
+                  {{ $label }}: {{ $tenant | quote }}
+        {{- end }}
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ printf "%s-infra" $name | quote }}
+      namespace: {{ $ns | quote }}
+      labels:
+        {{ $label }}: {{ $tenant | quote }}
+    data:
+      horizontalPodAutoscaler: |
+        spec:
+          minReplicas: {{ $p.minReplicas }}
+          maxReplicas: {{ $p.maxReplicas }}
+          metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: {{ $p.targetCPUUtilizationPercentage }}
+      podDisruptionBudget: |
+        spec:
+          minAvailable: {{ $p.pdbMinAvailable }}
+    {{- if $p.certManagerIssuerName }}
+    {{- range $l := $listeners }}
+    ---
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: {{ $l.secret | quote }}
+      namespace: {{ $ns | quote }}
+      labels:
+        {{ $label }}: {{ $tenant | quote }}
+    spec:
+      secretName: {{ $l.secret | quote }}
+      dnsNames:
+        - {{ $l.host | quote }}
+      issuerRef:
+        group: cert-manager.io
+        kind: {{ $p.certManagerIssuerKind }}
+        name: {{ $p.certManagerIssuerName | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+  parameters:
+    - disableOverride: true
+      name: tenantOf
+      type: object
+      value:
+        idle-dev: idle
+        n1234: "1234"
+        team-a-dev: team-a
+        team-a-test: team-a
+        team-b-dev: team-b
+        team-core: team
+    - disableOverride: true
+      name: owner
+      type: object
+      value:
+        "1234": n1234/a
+        team: team-core/gw
+        team-a: team-a-test/edge
+        team-b: team-b-dev/api-gateway
+    - disableOverride: true
+      name: extraHostnames
+      type: object
+      value:
+        team-a:
+          - api.team-a.example.org
+    - disableOverride: true
+      name: tenantLabelKey
+      value: stakater.com/tenant
+    - disableOverride: true
+      name: baseDomain
+      value: apis.example.com
+    - disableOverride: true
+      name: gatewayClassName
+      value: istio
+    - disableOverride: true
+      name: port
+      value: "443"
+    - disableOverride: true
+      name: minReplicas
+      value: "2"
+    - disableOverride: true
+      name: maxReplicas
+      value: "5"
+    - disableOverride: true
+      name: targetCPUUtilizationPercentage
+      value: "80"
+    - disableOverride: true
+      name: pdbMinAvailable
+      value: "1"
+    - disableOverride: true
+      name: certManagerIssuerKind
+      value: ClusterIssuer
+    - disableOverride: true
+      name: certManagerIssuerName
+      value: ""
+  sync:
+    mode: strict
+  targetNamespaces:
+    selector:
+      matchExpressions:
+        - key: stakater.com/tenant
+          operator: Exists
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  Upper: 'the name is not a DNS label (lowercase letters, digits and hyphens, no dots): this tenant can''t request an API gateway'
+  has.dot: 'the name is not a DNS label (lowercase letters, digits and hyphens, no dots): this tenant can''t request an API gateway'
+  request.has-dot-ns.api-gateway: namespace has-dot-ns does not belong to a tenant that may request an API gateway
+  request.n1234.b: tenant 1234 already has its API gateway, from TemplateInstance n1234/a; a tenant has one
+  request.team-a-dev.api-gateway: tenant team-a already has its API gateway, from TemplateInstance team-a-test/edge; a tenant has one
+  request.team-b-dev.bad.name: 'the TemplateInstance name must be a DNS label of at most 48 characters: it names the Gateway and its objects'
+  request.unlabelled.api-gateway: namespace unlabelled does not belong to a tenant that may request an API gateway
+  team-a.hostnames: 'Bad_Host.example.org: not a valid host name (lowercase letters, digits, hyphens and dots, optionally starting with *.)'
+  team-b.hostnames: |-
+    *.wild.example.org: overlaps x.wild.example.org, also granted to tenant team
+    shared.example.org: overlaps shared.example.org, also granted to tenant team
+  team.hostnames: |-
+    orders.apis.example.com: overlaps the base domain apis.example.com, which is reserved for <tenant>.apis.example.com names
+    shared.example.org: overlaps shared.example.org, also granted to tenant team-b
+    x.wild.example.org: overlaps *.wild.example.org, also granted to tenant team-b
+  tenant-name-of-sixty-four-characters-which-is-one-over-the-cap-x: 'the name is 64 characters, over the 63 a label value allows: this tenant can''t request an API gateway'
+kind: ConfigMap
+metadata:
+  name: mto-extension-api-gateway-skipped-tenants
+  namespace: mto-api-gateways
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 2
+      maxReplicas: 5
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 80
+  podDisruptionBudget: |
+    spec:
+      minAvailable: 1
+kind: ConfigMap
+metadata:
+  labels:
+    stakater.com/tenant: "1234"
+  name: a-infra
+  namespace: n1234
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  gateway: a
+  hostnames: '*.1234.apis.example.com'
+  status: ok
+  tenant: "1234"
+kind: ConfigMap
+metadata:
+  name: a-status
+  namespace: n1234
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  reason: tenant 1234 already has its API gateway, from TemplateInstance n1234/a; a tenant has one
+  status: refused
+kind: ConfigMap
+metadata:
+  name: b-status
+  namespace: n1234
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  reason: tenant team-a already has its API gateway, from TemplateInstance team-a-test/edge; a tenant has one
+  status: refused
+kind: ConfigMap
+metadata:
+  name: api-gateway-status
+  namespace: team-a-dev
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 2
+      maxReplicas: 5
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 80
+  podDisruptionBudget: |
+    spec:
+      minAvailable: 1
+kind: ConfigMap
+metadata:
+  labels:
+    stakater.com/tenant: team-a
+  name: edge-infra
+  namespace: team-a-test
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  gateway: edge
+  hostnames: '*.team-a.apis.example.com,api.team-a.example.org'
+  status: ok
+  tenant: team-a
+kind: ConfigMap
+metadata:
+  name: edge-status
+  namespace: team-a-test
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 2
+      maxReplicas: 5
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 80
+  podDisruptionBudget: |
+    spec:
+      minAvailable: 1
+kind: ConfigMap
+metadata:
+  labels:
+    stakater.com/tenant: team-b
+  name: api-gateway-infra
+  namespace: team-b-dev
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  gateway: api-gateway
+  hostnames: '*.team-b.apis.example.com'
+  status: ok
+  tenant: team-b
+kind: ConfigMap
+metadata:
+  name: api-gateway-status
+  namespace: team-b-dev
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  reason: 'the TemplateInstance name must be a DNS label of at most 48 characters: it names the Gateway and its objects'
+  status: refused
+kind: ConfigMap
+metadata:
+  name: bad.name-status
+  namespace: team-b-dev
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  horizontalPodAutoscaler: |
+    spec:
+      minReplicas: 2
+      maxReplicas: 5
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 80
+  podDisruptionBudget: |
+    spec:
+      minAvailable: 1
+kind: ConfigMap
+metadata:
+  labels:
+    stakater.com/tenant: team
+  name: gw-infra
+  namespace: team-core
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  gateway: gw
+  hostnames: '*.team.apis.example.com'
+  status: ok
+  tenant: team
+kind: ConfigMap
+metadata:
+  name: gw-status
+  namespace: team-core
+---
+# Source: shim/templates/render.yaml
+apiVersion: v1
+data:
+  reason: namespace unlabelled does not belong to a tenant that may request an API gateway
+  status: refused
+kind: ConfigMap
+metadata:
+  name: api-gateway-status
+  namespace: unlabelled

@@ -25,6 +25,10 @@ Fixture:
   `team-a-outside`, which is not in the mesh), `team-b` (`team-b-dev`) and
   `team` (`team-core`), whose name is a prefix of `team-a`'s. `team-a` is
   granted the extra hostname `api.team-a.example.org`.
+- Gateway requests (`TemplateInstance`s of `api-gateway`, no parameters):
+  `api-gateway` in `team-a-dev` (team-a's gateway), `gw` in `team-b-dev` and
+  `gw` in `team-core`; a later second request `extra` in `team-a-test`; and a
+  request `stray-request` in `unlabelled`, a namespace of no tenant.
 - APIs (annotated `HTTPRoute`s with an echo backend):
   `orders` in `team-a-dev` (`/orders/v2` → `/orders/v1`),
   `billing` in `team-b-dev`, and `a-orders` in `team-core`.
@@ -44,7 +48,8 @@ Fixture:
 ## Tenant separation
 
 **AC-ISO-1 — A route can't attach to another tenant's gateway.** *(R+L)* An
-`HTTPRoute` in `team-b-dev` with a `parentRef` to gateway `team-a` is not
+`HTTPRoute` in `team-b-dev` with a `parentRef` to `team-a`'s gateway
+(`api-gateway` in `team-a-dev`) is not
 accepted (route status `Accepted=False`); a request for its host through
 `team-a`'s gateway gets no route. `billing`, attached to `team-b`, is accepted.
 
@@ -82,6 +87,13 @@ for every caller and listed as `invalid` and `outside-mesh`. `orders` serves.
 **AC-ISO-8 — Every listener denies by default.** *(R+L)* Each listener of
 `team-a`'s gateway, the extra hostname's included, has its own default deny;
 `plain-extra` is refused for every caller, as `plain` is.
+
+**AC-ISO-9 — A request can't choose its tenant.** *(R+L)* A request in
+`team-a-test` whose own labels say `stakater.com/tenant: team-b` gets a
+listener for `team-a`'s namespaces and `*.team-a.apis.example.com`, never
+team-b's. A request can set no parameter: every parameter of `api-gateway` is
+`disableOverride`, and an instance that sets one fails
+(`OverrideNotAllowed`).
 
 ## Authentication and authorization
 
@@ -164,16 +176,30 @@ the render check.
 
 ## Lifecycle
 
-**AC-LIFE-1 — A new tenant gets a gateway.** *(L)* Creating tenant `team-c`
-gives gateway `team-c` with `Programmed=True`, its autoscaler and its
-gateway-level policies, with no other step.
+**AC-LIFE-1 — A team's request gets the tenant's gateway.** *(R+L)* A new
+tenant `team-c` has no gateway until its team creates a `TemplateInstance` of
+`api-gateway`, with no parameters, in `team-c-dev`. Then `team-c-dev` has a
+`Gateway` named like the request with `Programmed=True`, its autoscaler, its
+gateway-level policies, and `<request>-status` saying `ok`, with no other
+step.
+
+**AC-LIFE-5 — A tenant has one gateway.** *(R+L)* `extra` in `team-a-test`
+renders no `Gateway`; its `extra-status` says `refused` and names
+`team-a-dev/api-gateway`. `stray-request` in `unlabelled` is refused too
+(`targetNamespaces`, and the parent's list). Deleting `api-gateway` makes
+`extra` the owner, and `team-a-test` gets the gateway.
+
+**AC-LIFE-6 — A team can't change its gateway.** *(L)* As `alice`, editing or
+deleting `team-a`'s `Gateway`, its settings ConfigMap or a gateway-level
+policy is refused at admission (sync mode `strict`). Deleting the request
+`api-gateway` removes the gateway and everything it rendered.
 
 **AC-LIFE-2 — A deleted route takes its policies.** *(L)* Deleting route
 `orders` removes its route-level `AuthPolicy` and its backend lock; `billing`
 and `a-orders` are unchanged.
 
 **AC-LIFE-3 — A deleted tenant takes its gateway.** *(L)* Deleting tenant
-`team-b` removes gateway `team-b` and its gateway-level policies; nothing in
+`team-b` removes its gateway (`gw` in `team-b-dev`) and its gateway-level policies; nothing in
 `team-a` or `team` changes.
 
 **AC-LIFE-4 — A hand edit is reverted.** *(L)* Editing `team-a`'s gateway-level
@@ -191,8 +217,8 @@ list: `stray` as `outside-mesh`, `legacy` as `invalid`, a second route that
 reuses `orders` as a duplicate (the older route keeps serving), `plain` as
 not an API, a route for a host outside the tenant's hostnames as
 `unattached`. The skipped-tenants ConfigMap lists a tenant whose name is not
-a DNS label, and an extra hostname that falls inside another tenant's
-hostnames.
+a DNS label, an extra hostname inside the base domain, and two tenants'
+overlapping extra hostnames.
 
 **AC-OPS-3 — Upgrades keep the contract.** *(L)* The whole suite is green
 before and after a Service Mesh minor upgrade, with no chart change.

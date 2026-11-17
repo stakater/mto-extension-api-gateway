@@ -23,7 +23,7 @@ Phases → milestones → user stories. **Every story delivers a demo-able outco
 | Phase | Demo outcome |
 |---|---|
 | **0 · Prove the ground** | Every open question in `gateway-baseline.md` answered on a live OpenShift with Service Mesh 3 (ambient) and Connectivity Link; ADRs moved to Accepted or superseded. |
-| **1 · Walking skeleton** | Tenant created → its gateway appears and scales → an API team writes one annotated `HTTPRoute` → `shop` gets `200`, a caller without the API gets `403`, too fast gets `429`, a pod calling the backend directly is refused. |
+| **1 · Walking skeleton** | A team asks for its tenant's gateway → it appears in the team's namespace and scales → the team writes one annotated `HTTPRoute` → `shop` gets `200`, a caller without the API gets `403`, too fast gets `429`, a pod calling the backend directly is refused. |
 | **2 · Trustworthy** | Status and preflight, lifecycle, admission, migration from per-API gateways, an upgrade test — ready for a design partner. |
 | **3 · Complete** | RHBK roles from the route, a gateway of its own when an API needs one, observability per tenant, docs. |
 
@@ -47,20 +47,27 @@ OpenShift lab; each ADR Accepted or superseded; `design.md` and
 
 ## Phase 1 — Walking skeleton
 
-**Story G.1 — A gateway per tenant** 📝 *Draft*
+**Story G.1 — A gateway per tenant, on request** ✅ *Done*
 
-As a platform team, I want to install the extension once and have every tenant
-get its own gateway, so that no tenant needs a setup step and no tenant shares
-another's gateway.
+As an API team, I want to ask for my tenant's gateway with one
+`TemplateInstance`, so that I get a gateway with the platform's settings
+without configuring one; as a platform team, I want each tenant to have at most
+one, and to decide everything about it.
 
-Done: bootstrap chart with the parent `Template` and `TemplateInstance`; per
-valid `Tenant`, `Gateway` `<tenant>` in the gateway namespace with the listener
-of ADR-0002 and ADR-0009, its autoscaling ConfigMap and the entry point chosen
-in G.0; invalid and reserved
-tenant names skipped and listed; the render harness (golden fixtures, CRD
-validation against vendored Gateway API and Connectivity Link CRDs, the
-security-baseline check) wired into `make verify`. Satisfies **AC-ISO-1**,
-**AC-ISO-2**, **AC-R-1**, **AC-R-5**.
+Done: bootstrap chart with the parent `Template` and `TemplateInstance`; the
+parent publishes the `api-gateway` Template (only tenant namespaces, sync
+`strict`, every parameter `disableOverride`: `tenantOf`, `owner`, granted
+extra host names, gateway settings); a team's parameterless request renders,
+in its own namespace, `Gateway` `<request>` with the listeners of ADR-0002 and
+ADR-0009, its autoscaling ConfigMap and its certificates, or only a status
+ConfigMap that says why not; one owner per tenant (the oldest valid request);
+invalid tenant names, refused host names and refused requests listed; the
+render harness (golden, CRD validation against vendored Gateway API and
+cert-manager CRDs, listener, trust and forbidden-kind checks) wired into
+`make verify`. Live checks wait for G.0. Satisfies **AC-ISO-1**,
+**AC-ISO-2**, **AC-ISO-9**, **AC-R-1**, **AC-R-5**, **AC-LIFE-1**,
+**AC-LIFE-5**. Planning:
+[`planning/G1-gateway-per-tenant.md`](planning/G1-gateway-per-tenant.md).
 
 **Story G.2 — The security baseline** 📝 *Draft*
 
@@ -122,9 +129,10 @@ unknown tier, counted per caller; live: `429` at the limit, per-caller counters.
 outside the tenant's hostnames); preflight for Service Mesh, Gateway API CRDs,
 Connectivity Link and the issuer. Satisfies **AC-OPS-2**.
 
-**Story G.7 — Lifecycle** 📝 *Draft* — route deleted, tenant deleted, a hand
-edit reverted; nothing left behind, nothing else touched. Satisfies
-**AC-LIFE-2**, **AC-LIFE-3**, **AC-LIFE-4**.
+**Story G.7 — Lifecycle** 📝 *Draft* — route deleted, request deleted,
+tenant deleted, a hand edit reverted or refused; nothing left behind, nothing
+else touched. Satisfies **AC-LIFE-2**, **AC-LIFE-3**, **AC-LIFE-4**,
+**AC-LIFE-6**.
 
 **Story G.8 — Admission, agreed with the Service Mesh extension** 📝 *Draft* —
 a `ValidatingAdmissionPolicy` for the kinds of ADR-0008 and for a `parentRef`
@@ -174,6 +182,11 @@ the mesh's egress, with what the lock can and can't promise there.
 **Story G.17 — Internal callers of an API backend** 📝 *Draft* — an API team
 names ServiceAccounts of its own namespace that may also call the backend's
 API ports, so internal callers don't have to go through the gateway.
+
+**Story G.18 — The entry point** 📝 *Draft* — the entry point that G.0
+chooses (Q10), rendered per tenant gateway: a load balancer, or OpenShift
+`Route`s on a dedicated IngressController for the base domain; certificates
+from the platform's issuer.
 
 ---
 

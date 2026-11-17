@@ -4,8 +4,10 @@ Guidance for working in this repository.
 
 ## What this is
 
-**The API Gateway extension for the Multi-Tenant Operator.** It gives every
-Multi-Tenant Operator `Tenant` its own API gateway on OpenShift: a Gateway API
+**The API Gateway extension for the Multi-Tenant Operator.** It lets every
+Multi-Tenant Operator `Tenant` ask for its own API gateway on OpenShift, with
+one parameterless `TemplateInstance` in the namespace where the gateway should
+run (ADR-0002): a Gateway API
 `Gateway` on OpenShift Service Mesh 3, with the platform's security baseline
 built in as Red Hat Connectivity Link policies — token check, allowed-API
 rule, caller headers set from the token, rate limit tiers — and a mesh lock
@@ -16,14 +18,20 @@ It reuses the shape of `stakater/mto-extension-vault-enterprise`: a bootstrap
 chart, a per-tenant chart rendered by Template Operator v2, the parent fan-out
 per `Tenant` (ADR-0001).
 
-## Status: design phase — no code yet
+## Status: walking skeleton, render-tested only
 
-This repo holds **requirements and design only**. No chart yet. `make verify`
-already gates the docs: markdownlint, relative links, the method checks in
-`hack/check_method.py` and their tests. CI runs it on every PR, plus the
-ADR-immutability and story-citation checks. Every story is 📝 Draft until a
-human approves it. The first story is **G.0, a live spike** — do it before
-writing any chart.
+G.1 is built: the bootstrap chart (`charts/mto-extension-api-gateway-bootstrap`)
+publishes the `api-gateway` Template, and a team's request renders its
+tenant's `Gateway` in the team's namespace. **G.0, the live spike, is not done**: the
+code owner chose to build G.1 offline first. Nothing is proven on a cluster
+yet, and no chart is released before G.0.
+
+`make verify` gates every PR: markdownlint, relative links, the method checks
+in `hack/check_method.py` and their tests, and `make charts`
+(`hack/chart-render-tests.sh`: render checks, the golden, and CRD validation
+against `hack/crds` through `hack/crd-validate`). It needs helm, yq and Go.
+CI runs it, plus the ADR-immutability and story-citation checks. Regenerate
+the golden only after an intended change: `make golden`.
 
 ## Invariants — never violate these
 
@@ -39,6 +47,14 @@ writing any chart.
 1. **The allowed-API rule is derived and closed** (ADR-0006):
    `api.<tenant>.<api>`, exact or followed by `.`; never a typed pattern,
    never a wildcard.
+1. **A team's request decides only where its gateway runs and what it is
+   called** (ADR-0002). The `api-gateway` Template has no parameter a team
+   can set (all `disableOverride`); the tenant comes from the parent's
+   `tenantOf`, keyed by the request's namespace, never from the request's
+   labels; one request per tenant owns the gateway; the Template syncs
+   `strict`. The render tests' `trust` and `params` checks hold this.
+1. **A team request renders only into its own namespace**; the parent only
+   into the platform namespace.
 1. **A listener takes only its tenant** (ADR-0002, ADR-0009):
    `from: Selector` on `stakater.com/tenant`, a hostname under the tenant's
    name; never `from: All`.

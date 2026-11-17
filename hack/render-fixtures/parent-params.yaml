@@ -1,0 +1,88 @@
+# Parameters for the parent gotemplate, as the parent TemplateInstance would
+# resolve them. Each tenant, host name and request exercises one rule; the
+# comments say which. hack/chart-render-tests.sh depends on these exact cases.
+# teamGotemplate is set by the test from files/team-gotemplate.tpl.
+parameters:
+  gatewayNamespace: mto-api-gateways
+  teamTemplateName: api-gateway
+  teamGotemplate: ""
+  tenantLabelKey: stakater.com/tenant
+  tenantsMode: all
+  tenantList: []
+  gatewayClassName: istio
+  baseDomain: apis.example.com
+  port: "443"
+  minReplicas: "2"
+  maxReplicas: "5"
+  targetCPUUtilizationPercentage: "80"
+  pdbMinAvailable: "1"
+  certManagerIssuerKind: ClusterIssuer
+  certManagerIssuerName: ""
+  extraHostnames:
+    # granted: listener extra-1 on team-a's gateway; Bad_Host is refused
+    team-a: [api.team-a.example.org, Bad_Host.example.org]
+    # shared.example.org is also granted to team: refused for both;
+    # *.wild.example.org covers team's x.wild.example.org: refused for both
+    team-b: [shared.example.org, "*.wild.example.org"]
+    # orders.apis.example.com is inside the base domain: refused
+    team: [shared.example.org, x.wild.example.org, orders.apis.example.com]
+  tenants:
+    - metadata: { name: team-a }
+    - metadata: { name: team-b }
+    # a prefix of team-a's name
+    - metadata: { name: team }
+    # no request: no gateway, nothing listed
+    - metadata: { name: idle }
+    # not DNS labels: skipped and listed
+    - metadata: { name: has.dot }
+    - metadata: { name: Upper }
+    # 64 characters: over a label value's 63, skipped and listed
+    - metadata: { name: tenant-name-of-sixty-four-characters-which-is-one-over-the-cap-x }
+    # all digits: a valid DNS label that YAML reads as a number unless quoted
+    - metadata: { name: "1234" }
+  tenantNamespaces:
+    - metadata: { name: team-a-dev, labels: { stakater.com/tenant: team-a } }
+    - metadata: { name: team-a-test, labels: { stakater.com/tenant: team-a } }
+    - metadata: { name: team-b-dev, labels: { stakater.com/tenant: team-b } }
+    - metadata: { name: team-core, labels: { stakater.com/tenant: team } }
+    - metadata: { name: idle-dev, labels: { stakater.com/tenant: idle } }
+    - metadata: { name: has-dot-ns, labels: { stakater.com/tenant: has.dot } }
+    - metadata: { name: upper-ns, labels: { stakater.com/tenant: Upper } }
+    - metadata: { name: n1234, labels: { stakater.com/tenant: "1234" } }
+    # not a tenant namespace: no label, or another label
+    - metadata: { name: unlabelled }
+    - metadata: { name: lookalike, labels: { other.example.com/tenant: team-a } }
+  templateInstances:
+    # team-a: two requests; the older one owns the gateway, the newer is refused
+    - metadata: { name: edge, namespace: team-a-test, creationTimestamp: "2026-11-01T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: api-gateway, namespace: team-a-dev, creationTimestamp: "2026-11-02T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    # team-b: the owner, and a request whose name is not a DNS label (refused)
+    - metadata: { name: api-gateway, namespace: team-b-dev, creationTimestamp: "2026-11-03T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: bad.name, namespace: team-b-dev, creationTimestamp: "2026-10-01T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: gw, namespace: team-core, creationTimestamp: "2026-11-04T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    # same timestamp: the first "<namespace>/<name>" wins (n1234/a)
+    - metadata: { name: b, namespace: n1234, creationTimestamp: "2026-11-05T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: a, namespace: n1234, creationTimestamp: "2026-11-05T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    # not a tenant namespace, or a skipped tenant's namespace: refused
+    - metadata: { name: api-gateway, namespace: unlabelled, creationTimestamp: "2026-11-06T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: api-gateway, namespace: has-dot-ns, creationTimestamp: "2026-11-06T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    # ignored: being deleted (would otherwise own team-a's gateway), another
+    # Template, and an api-gateway Template in another namespace
+    - metadata: { name: old, namespace: team-a-dev, creationTimestamp: "2026-01-01T10:00:00Z", deletionTimestamp: "2026-11-10T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: mto-api-gateways } }
+    - metadata: { name: other, namespace: team-a-dev, creationTimestamp: "2026-01-01T10:00:00Z" }
+      spec: { templateRef: { name: something-else, namespace: mto-api-gateways } }
+    - metadata: { name: fake, namespace: team-a-dev, creationTimestamp: "2026-01-01T10:00:00Z" }
+      spec: { templateRef: { name: api-gateway, namespace: team-a-dev } }
+    # the parent itself
+    - metadata: { name: mto-extension-api-gateway-parent, namespace: mto-api-gateways, creationTimestamp: "2026-01-01T09:00:00Z" }
+      spec: { templateRef: { name: mto-extension-api-gateway-parent, namespace: mto-api-gateways } }

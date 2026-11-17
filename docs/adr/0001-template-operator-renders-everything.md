@@ -23,15 +23,19 @@ an API team instantiates once per API.
 - **Two Helm charts, rendered by Template Operator v2**, in the shape of the
   other extensions:
     - `mto-extension-api-gateway-bootstrap`: installed once per cluster by
-      Helm; renders the gateway namespace's objects and, per `Tenant`, the
-      tenant gateway, its gateway-level policies and its autoscaling config.
+      Helm; its parent publishes the team-facing `api-gateway` Template. A
+      team's `TemplateInstance` of it, with no parameters, renders the
+      tenant's gateway, its gateway-level policies and its autoscaling config
+      in the team's namespace (ADR-0002).
     - `mto-extension-api-gateway`: never installed by hand; pulled per tenant;
       renders the route-level policy and the backend lock for every annotated
       `HTTPRoute` in the tenant's namespaces.
-- **No custom resource and no controller.** The developer contract is the
+- **No custom resource and no controller.** The developer contract is one
+  `TemplateInstance` per tenant for the gateway (ADR-0002) and, per API, the
   Gateway API `HTTPRoute` plus one annotation (ADR-0005).
-- **Templates use sync mode `revert`**, so a chart upgrade or a tenant change
-  reaches every tenant, and a hand edit to a rendered object is reverted (T3).
+- **Templates never use sync mode `off`**, so a chart upgrade or a tenant
+  change reaches every tenant (T3). The parent uses `revert`; the team-facing
+  `api-gateway` uses `strict`, so a team can't edit or delete what it got.
 
 ## Consequences
 
@@ -47,12 +51,13 @@ an API team instantiates once per API.
 
 ## Alternatives
 
-- **A `Template` that the API team instantiates per API (the first
-  proposal).** Rejected as the contract: a tenant-created `TemplateInstance`
-  is a new, non-standard API for each team to learn, and it renders with the
-  operator's rights, not the team's. Its goals (one chart, no security
-  switches, a derived allowed-API rule, one upgrade) are kept — see
-  ADR-0004..0006.
+- **A `Template` that the API team instantiates per API, with parameters
+  (the first proposal).** Rejected as the API contract: its parameters
+  re-create a values file, and an instance renders with the operator's rights
+  and can read through `valueFrom`. Kept in a safer form for the gateway
+  itself: one `TemplateInstance` per tenant, with no parameters (ADR-0002).
+  Its goals (one chart, no security switches, a derived allowed-API rule, one
+  upgrade) are kept — see ADR-0004..0006.
 - **A new operator with an `ApiGateway` CRD.** Rejected: one more component to
   build and run, for objects that already have standard APIs.
 - **A chart per team (today).** Rejected: copies drift, and every team owns the

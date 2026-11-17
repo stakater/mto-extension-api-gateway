@@ -1,23 +1,25 @@
 # mto-extension-api-gateway
 
 The API Gateway extension for the
-[Multi-Tenant Operator](https://docs.stakater.com/mto/). Every `Tenant` gets
-its own API gateway on OpenShift — a Gateway API `Gateway` on Red Hat
+[Multi-Tenant Operator](https://docs.stakater.com/mto/). Every `Tenant` can
+ask for its own API gateway on OpenShift — a Gateway API `Gateway` on Red Hat
 OpenShift Service Mesh 3 — with the platform's security baseline built in as
 Red Hat Connectivity Link policies: token check, allowed-API rule, caller
-headers set from the token, and rate limit tiers. An API team publishes an
-API with a standard `HTTPRoute` and one annotation, and no security switch to
-get wrong.
+headers set from the token, and rate limit tiers. A team asks for its gateway
+with one `TemplateInstance` that has no parameters, and publishes each API with
+a standard `HTTPRoute` and one annotation. There is no security switch to get
+wrong.
 
-> **Status: design phase.** This repository holds requirements and design. No
-> chart is built yet. Start with [docs/vision.md](docs/vision.md), then
+> **Status: walking skeleton.** The bootstrap chart renders one gateway per
+> tenant ([charts/](charts/README.md)); it is render-tested, not yet proven on a
+> cluster, and not released. Start with [docs/vision.md](docs/vision.md), then
 > [docs/design.md](docs/design.md).
 
 ## What a tenant gets
 
 | On the platform | At the gateway |
 |---|---|
-| Tenant `team-a` | `Gateway` `team-a`, serving `*.team-a.apis.example.com`, autoscaled |
+| `TemplateInstance` `api-gateway` (no parameters) in `team-a-dev` | `Gateway` `api-gateway` in `team-a-dev`, serving `*.team-a.apis.example.com`, autoscaled; one per tenant |
 | Every request | a valid token from the platform's issuer; caller headers replaced from the token; the caller's rate limit tier |
 | `HTTPRoute` `orders` in `team-a-dev`, annotated `api-gateway.stakater.com/api: orders` | only callers whose token names `api.team-a.orders` get through |
 | Backend Service `orders` | accepts calls from `team-a`'s gateway only |
@@ -47,5 +49,6 @@ part that makes it safe,
 | [Ownership & RACI](docs/raci.md) | who owns what without the extension and with it; platform team vs API team |
 | [Gateway baseline](docs/gateway-baseline.md) | what Service Mesh, Gateway API, Connectivity Link and Template Operator give, with sources |
 | [Diagrams](docs/diagrams.md) | C4 and sequence diagrams |
+| [Parameters](docs/parameters.md) | every setting of today's gateway chart, and who sets it now: the platform, the team, or nobody |
 | [ADRs](docs/adr/README.md) | decisions and rejected alternatives |
 | [Method](docs/method.md) | how work moves from story to done |

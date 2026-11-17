@@ -28,24 +28,30 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-  subgraph platformns[Gateway namespace mto-api-gateways — platform only]
-    gwA[Gateway team-a<br/>listener *.team-a.apis.example.com<br/>routes from stakater.com/tenant=team-a]
-    podsA[team-a-istio pods<br/>autoscaled]
-    baseA[AuthPolicy team-a-baseline<br/>overrides: JWT, tenant floor, headers]
-    denyA[AuthPolicy team-a-deny-tenant<br/>defaults: refuse, one per listener]
-    floorA[RequestAuthentication + DENY<br/>team-a-jwt-floor: no token, no entry]
-    rlA[RateLimitPolicy team-a-tiers<br/>overrides: tiers per caller]
+  subgraph platformns[mto-api-gateways — platform only]
+    parent[parent TemplateInstance<br/>reads Tenants, Namespaces, requests]
+    tpl[Template api-gateway<br/>tenantOf, owner, settings: all disableOverride<br/>sync strict]
+    parent -->|publishes| tpl
+  end
+  subgraph tenantns[team-a-dev — a tenant namespace]
+    req[TemplateInstance api-gateway<br/>the team's request, no parameters]
+    gwA[Gateway api-gateway<br/>listener *.team-a.apis.example.com<br/>routes from stakater.com/tenant=team-a]
+    podsA[api-gateway-istio pods<br/>autoscaled]
+    baseA[AuthPolicy api-gateway-baseline<br/>overrides: JWT, tenant floor, headers]
+    denyA[AuthPolicy api-gateway-deny-tenant<br/>defaults: refuse, one per listener]
+    floorA[RequestAuthentication + DENY<br/>api-gateway-jwt-floor: no token, no entry]
+    rlA[RateLimitPolicy api-gateway-tiers<br/>overrides: tiers per caller]
+    route[HTTPRoute orders<br/>annotation api: orders]
+    apA[AuthPolicy api.orders<br/>allowed-API rule api.team-a.orders]
+    lock[AuthorizationPolicy api.orders.orders<br/>DENY all but api-gateway-istio on the API port]
+    svc[Service orders]
+    req -.->|instance of| tpl
+    req -->|renders, strict| gwA
     gwA --> podsA
     baseA -.->|targets| gwA
     denyA -.->|targets| gwA
     rlA -.->|targets| gwA
     floorA -.->|targets| gwA
-  end
-  subgraph tenantns[Tenant namespace team-a-dev]
-    route[HTTPRoute orders<br/>annotation api: orders]
-    apA[AuthPolicy api-gateway-orders<br/>allowed-API rule api.team-a.orders]
-    lock[AuthorizationPolicy api-gateway-orders-orders<br/>DENY all but team-a-istio on the API port]
-    svc[Service orders]
     route -->|parentRef| gwA
     route -->|backendRef| svc
     apA -.->|targets| route
@@ -57,8 +63,7 @@ flowchart TB
     top[Template Operator v2]
   end
   top -->|renders| platformns
-  top -->|renders| apA
-  top -->|renders| lock
+  top -->|renders| tenantns
   podsA -->|mTLS via ztunnel| svc
   podsA -->|auth and rate-limit calls| cl
 ```
@@ -71,7 +76,7 @@ sequenceDiagram
   participant C as Caller (shop)
   participant K as RHBK
   participant E as Entry point (OpenShift Route)
-  participant G as Gateway team-a (Envoy)
+  participant G as Gateway api-gateway in team-a-dev (Envoy)
   participant A as Authorino (AuthPolicy)
   participant L as Limitador (RateLimitPolicy)
   participant Z as ztunnel
@@ -89,12 +94,12 @@ sequenceDiagram
   G->>L: count shop against silver
   L-->>G: 429 if over the limit
   G->>Z: /orders/v1 with x-sub, x-roles
-  Z->>B: mTLS from team-a-istio identity
+  Z->>B: mTLS from api-gateway-istio identity
   Note over Z,B: backend lock (DENY): any other identity, or none, is refused
   B-->>C: 200
 ```
 
-## Onboard a tenant, publish an API
+## Request a gateway, publish an API
 
 ```mermaid
 sequenceDiagram
@@ -103,15 +108,20 @@ sequenceDiagram
   participant M as Multi-Tenant Operator
   participant T as Template Operator
   participant S as Service Mesh
-  participant D as API team
+  participant D as Team team-a
+  P->>T: install the bootstrap chart once (mto-api-gateways)
+  T->>T: parent publishes Template api-gateway
   P->>M: create Tenant team-a (namespaces, mesh labels)
   M->>M: label namespaces stakater.com/tenant=team-a
-  T->>T: parent sees Tenant team-a
-  T->>S: Gateway team-a + ConfigMap + baseline policies
-  S->>S: deploy team-a-istio with autoscaler
+  T->>T: parent adds team-a's namespaces to tenantOf
+  D->>D: create TemplateInstance api-gateway in team-a-dev (no parameters)
+  T->>T: parent sees the request: owner of team-a = team-a-dev/api-gateway
+  T->>D: Gateway api-gateway + settings + baseline policies + status ok (strict)
+  S->>S: deploy api-gateway-istio with autoscaler
+  D->>D: a second request in team-a-test gets status refused, naming the owner
   D->>D: write HTTPRoute orders + annotation api: orders
-  T->>T: child sees annotated route in team-a-dev
-  T->>D: AuthPolicy + backend lock (only if every backend can be locked) + status
+  T->>T: per-tenant chart sees the annotated route (G.3)
+  T->>D: AuthPolicy + backend lock (only if every backend can be locked)
   Note over D: shop gets 200, others 401, 403 or 429
 ```
 
@@ -125,10 +135,10 @@ sequenceDiagram
   participant T as Template Operator
   D->>D: delete HTTPRoute orders
   T->>T: child no longer lists orders
-  T->>D: delete AuthPolicy and backend lock api-gateway-orders
-  P->>P: delete Tenant team-a
-  T->>T: parent no longer lists team-a
-  T->>P: delete Gateway team-a and its policies
+  T->>D: delete AuthPolicy api.orders and backend lock api.orders.orders
+  D->>D: delete TemplateInstance api-gateway (or the platform deletes Tenant team-a)
+  T->>D: delete Gateway api-gateway, its policies and its settings
+  Note over T: with the tenant gone, tenantOf drops its namespaces, so no request of it renders a gateway
   Note over T: objects of other tenants are never touched (ownership by provenance, T4)
 ```
 

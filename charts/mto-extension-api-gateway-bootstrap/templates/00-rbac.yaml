@@ -1,0 +1,100 @@
+{{- include "mto-extension-api-gateway-bootstrap.validate" . }}
+# RBAC granted to the Template Operator v2 ServiceAccount so it can:
+#   - LIST/WATCH Tenants, Namespaces and TemplateInstances (the parent's
+#     objectFieldRef sources; a team's request is a TemplateInstance)
+#   - write the api-gateway Template and the skipped-tenants ConfigMap in the
+#     platform namespace (the parent's render)
+#   - write Gateways, ConfigMaps and Certificates in tenant namespaces (a team
+#     request renders its gateway in its own namespace). Tenant namespaces come
+#     and go, so this is a ClusterRole. It also gives Template Operator's
+#     orphan discovery the cluster-wide `list` it needs.
+# hack/chart-render-tests.sh (rbaccover) fails when a rendered kind is missing.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mto-extension-api-gateway-reader
+rules:
+  - apiGroups: ["tenantoperator.stakater.com"]
+    resources: ["tenants"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["templates.v2.stakater.com"]
+    resources: ["templateinstances"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mto-extension-api-gateway-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mto-extension-api-gateway-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.templateOperator.serviceAccountName }}
+    namespace: {{ .Values.templateOperator.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mto-extension-api-gateway-manager
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Granted whether or not cert-manager is on, so turning it off can still reap
+  # the Certificates already rendered.
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["templates.v2.stakater.com"]
+    resources: ["templates"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mto-extension-api-gateway-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mto-extension-api-gateway-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.templateOperator.serviceAccountName }}
+    namespace: {{ .Values.templateOperator.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mto-extension-api-gateway-manager
+  namespace: {{ .Release.Namespace }}
+rules:
+  # The api-gateway Template that teams instantiate is rendered by the parent.
+  - apiGroups: ["templates.v2.stakater.com"]
+    resources: ["templates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mto-extension-api-gateway-manager
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mto-extension-api-gateway-manager
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.templateOperator.serviceAccountName }}
+    namespace: {{ .Values.templateOperator.namespace }}

@@ -15,7 +15,8 @@ replaces (K6).
 ## Decision
 
 - **The security baseline is a gateway-level policy with `overrides`,**
-  rendered by the bootstrap chart on each tenant gateway:
+  rendered with each tenant gateway, in its namespace, by the `api-gateway`
+  Template (sync `strict`, so the team can't edit or delete them):
     - `AuthPolicy`: a valid JWT from the platform's issuer and audience;
       the tenant floor (the token names some API of this tenant,
       `api.<tenant>.*`), so a token for another tenant never passes;

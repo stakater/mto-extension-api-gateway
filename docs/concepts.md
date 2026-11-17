@@ -10,8 +10,9 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 | Term | Where it lives | What it is |
 |---|---|---|
 | **Tenant** | Multi-Tenant Operator | The unit of ownership: a team and its namespaces. Every tenant namespace carries the label `stakater.com/tenant=<tenant>`. |
-| **Tenant gateway** | Gateway API `Gateway`, platform namespace | One Envoy gateway per tenant, `team-a` in `mto-api-gateways`. Service Mesh deploys its pods. Only routes from the tenant's own namespaces attach to it. |
-| **Gateway namespace** | Kubernetes | The one platform namespace that holds every tenant gateway and its gateway-level policies (`mto-api-gateways` by default). Tenants have no access to it. |
+| **Gateway request** | a `TemplateInstance` of the `api-gateway` Template, in a tenant namespace | How a team asks for its tenant's gateway: `api-gateway` in `team-a-dev`. It has no parameters. A tenant has one gateway: the oldest request wins, and every other request gets a status that says why. |
+| **Tenant gateway** | Gateway API `Gateway`, in the request's namespace | The tenant's one Envoy gateway, named like its request: `api-gateway` in `team-a-dev`. Service Mesh deploys its pods there (`api-gateway-istio`). Only routes from the tenant's own namespaces attach to it. The team can't edit or delete it. |
+| **Platform namespace** | Kubernetes | `mto-api-gateways`: the bootstrap chart, its parent, and the `api-gateway` Template that teams instantiate. Tenants have no access to it. |
 | **Tenant hostnames** | the tenant gateway's listener | The host names the tenant gateway serves: `*.team-a.apis.example.com` by default, plus any extra names the platform grants. A route for any other host doesn't attach. |
 | **API** | `HTTPRoute` in a tenant namespace | One published API: an `HTTPRoute` with `parentRef` to the tenant gateway and the annotation `api-gateway.stakater.com/api: orders`. Written by the API team. |
 | **API name** | the annotation | A DNS label, unique in the tenant: `orders`. It names the API in the allowed-API rule and in every object the extension renders for the route. |
@@ -37,10 +38,27 @@ Three words that are easy to confuse:
 
 ## The example, end to end
 
-1. The platform installs the bootstrap chart once. For tenant `team-a` the
-   chart renders Gateway `team-a` in `mto-api-gateways`, with the listener
-   `*.team-a.apis.example.com`, and the gateway-level security baseline.
-   Service Mesh deploys the gateway pods with an autoscaler.
+1. The platform installs the bootstrap chart once, in `mto-api-gateways`. It
+   publishes the `api-gateway` Template.
+1. Team `team-a` asks for its gateway, once, in the namespace where it should
+   run:
+
+    ```yaml
+    apiVersion: templates.v2.stakater.com/v2alpha1
+    kind: TemplateInstance
+    metadata:
+      name: api-gateway
+      namespace: team-a-dev
+    spec:
+      templateRef:
+        name: api-gateway
+        namespace: mto-api-gateways
+    ```
+
+   Template Operator renders, in `team-a-dev`: Gateway `api-gateway` with the
+   listener `*.team-a.apis.example.com`, the gateway-level security baseline,
+   and the status ConfigMap `api-gateway-status`. Service Mesh deploys the
+   gateway pods with an autoscaler.
 1. The API team writes one `HTTPRoute` in `team-a-dev`:
 
     ```yaml
@@ -53,8 +71,7 @@ Three words that are easy to confuse:
         api-gateway.stakater.com/api: orders
     spec:
       parentRefs:
-        - name: team-a
-          namespace: mto-api-gateways
+        - name: api-gateway         # add namespace: when the route is elsewhere in the tenant
       hostnames: [dev.team-a.apis.example.com]
       rules:
         - matches:
@@ -86,12 +103,12 @@ Three words that are easy to confuse:
 
 | | A gateway per API (today) | This extension |
 |---|---|---|
-| Who owns the gateway | each API team, in its own chart copy | the platform, one chart for every tenant |
-| How many gateways | one per API per environment | one per tenant |
+| Who owns the gateway | each API team, in its own chart copy | the platform defines it; the team asks for it with one `TemplateInstance` |
+| How many gateways | one per API per environment | one per tenant that asked |
 | Replicas | fixed | autoscaled |
 | Token check, header handling | Istio `RequestAuthentication` + `AuthorizationPolicy` + `EnvoyFilter` | Connectivity Link `AuthPolicy` |
 | Rate limit | `EnvoyFilter` + an Envoy rate limit service | Connectivity Link `RateLimitPolicy` |
 | Allowed-API rule | free text in values | derived from tenant and API name |
-| What the team writes | a full values file and an Argo CD app | one `HTTPRoute` with one annotation |
+| What the team writes | a full values file and an Argo CD app | one parameterless `TemplateInstance` per tenant; one `HTTPRoute` with one annotation per API |
 | Security switches | in the values file | none |
 | Upgrade | each team, by hand | the platform, once |

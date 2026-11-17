@@ -51,7 +51,7 @@ Files under `docs/spikes/g0/` (hand-written, no chart):
 
 | File | Contents |
 |---|---|
-| `platform.yaml` | gateway namespace, `Gateway` `team-a` and `team-b` (ADR-0002, ADR-0009), parametersRef ConfigMaps, OpenShift `Route`s (re-encrypt) |
+| `platform.yaml` | the bootstrap chart installed with the lab's values; a request (`TemplateInstance` of `api-gateway`) for `team-a` and `team-b` (ADR-0002, ADR-0009); OpenShift `Route`s (re-encrypt) |
 | `baseline.yaml` | per gateway: `AuthPolicy` baseline (`overrides`, `merge`), listener-level default deny, `RateLimitPolicy` tiers — as in design §3.1 |
 | `apis.yaml` | the fixture `HTTPRoute`s with annotations, route-level `AuthPolicy`s and backend locks — as in design §3.2 |
 | `acceptance.sh` | the live AC scenarios as `curl` calls with tokens from RHBK, printing status code and echoed headers |

@@ -14,26 +14,42 @@ Operator, the parent fan-out per `Tenant`, the skipped-tenants ConfigMap,
 
 ## 1. Scope
 
-Every Multi-Tenant Operator tenant gets one API gateway, with the platform's
-security baseline built in: token check, allowed-API rule, caller headers set
+Every Multi-Tenant Operator tenant can have one API gateway, on request, with
+the platform's security baseline built in: token check, allowed-API rule, caller headers set
 from the token, rate limit tiers, and a lock that makes the gateway the only
-way to the backend. An API team publishes an API with a standard `HTTPRoute`
-and one annotation. Non-goals: see `vision.md`.
+way to the backend. A team asks for its gateway with one `TemplateInstance`
+of the platform's `api-gateway` Template, in the namespace where the gateway
+should run. Then it publishes each API with a standard `HTTPRoute` and one
+annotation. Non-goals: see `vision.md`.
 
 ## 2. Architecture
 
-Two Helm charts, rendered through Template Operator v2 (ADR-0001). See
+Two Helm charts, rendered through Template Operator v2 (ADR-0001), and one
+`TemplateInstance` per tenant that the team creates (ADR-0002). See
 `diagrams.md`.
 
-| Chart | Installed | Renders |
+| Piece | Created | Renders |
 |---|---|---|
-| `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm | the parent `Template` and `TemplateInstance`; the child `Template`; the gateway namespace's shared objects; **per `Tenant`**: `Gateway` `<tenant>`, its autoscaling ConfigMap, its TLS certificate request, the gateway-level `AuthPolicy` (baseline, `overrides`), the gateway-level default deny, the gateway-level `RateLimitPolicy` (tiers, `overrides`); the skipped-tenants ConfigMap |
-| `mto-extension-api-gateway` | never by hand; pulled per tenant | **per annotated `HTTPRoute`**: the route-level `AuthPolicy` (allowed-API rule) and the backend lock (Istio `AuthorizationPolicy`), in the route's namespace; the tenant's status ConfigMap |
+| `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm, in the platform's namespace `mto-api-gateways` | the parent `Template` and `TemplateInstance`. The parent publishes the team-facing **`api-gateway` Template** in `mto-api-gateways` and the skipped-tenants ConfigMap |
+| A `TemplateInstance` of `api-gateway` | by the team, in the tenant namespace where its gateway should run; no parameters | **in its own namespace**: `Gateway` `<request>`, its settings ConfigMap, its certificates, the gateway-level policies (§3.1), and the request's status ConfigMap |
+| `mto-extension-api-gateway` (G.3) | never by hand; pulled per tenant | **per annotated `HTTPRoute`**: the route-level `AuthPolicy` (allowed-API rule) and the backend lock (Istio `AuthorizationPolicy`), in the route's namespace; the tenant's API list |
 
-The parent finds a tenant's namespaces by the label `stakater.com/tenant`
-(T1). The child `TemplateInstance` gets the tenant's `HTTPRoute`s and
-`Service`s as list parameters, scoped to those namespaces (T2), the same way
-the Enterprise chart gets ServiceAccounts.
+**How the request stays trusted.** A team writes only the `TemplateInstance`'s
+namespace and name. Every parameter of `api-gateway` is a `disableOverride`
+default that the parent sets and keeps current (T2):
+
+- `tenantOf` — namespace → tenant, from the label `stakater.com/tenant` (T1),
+  for the tenants that may request a gateway. The team render reads its
+  instance's tenant from here, never from the instance's labels;
+- `owner` — tenant → the one request that gets its gateway: the oldest valid
+  `TemplateInstance` of `api-gateway` in the tenant's namespaces. Every other
+  request renders only a status ConfigMap that says why;
+- `extraHostnames`, and the platform's gateway settings.
+
+`api-gateway` syncs `strict`: Template Operator's admission webhook refuses a
+team's edit or delete of anything the request rendered (T3), so the team
+can't weaken its own gateway. Only tenant namespaces may instantiate it
+(`targetNamespaces` selector on the tenant label).
 
 **Not rendered:** the GatewayClass, Service Mesh and its mesh settings,
 Connectivity Link and its `Kuadrant` instance, the RHBK realm, clients and
@@ -42,20 +58,20 @@ to each gateway (OpenShift `Route` or load balancer) is open until G.0 (§9).
 
 ## 3. What is rendered
 
-### 3.1 Per tenant, in the gateway namespace (bootstrap chart)
+### 3.1 Per request, in the request's namespace (`api-gateway` Template)
 
-For tenant `team-a`, base domain `apis.example.com`, gateway namespace
-`mto-api-gateways`.
+For tenant `team-a`, which asked with `TemplateInstance` `api-gateway` in
+namespace `team-a-dev`; base domain `apis.example.com`.
 
 | Kind | Name | What it does |
 |---|---|---|
-| `Gateway` (class `istio`, from the ambient mesh's own control plane, K1) | `team-a` | One HTTPS listener `tenant` for `*.team-a.apis.example.com`, routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); Service Mesh deploys `team-a-istio` (M3) |
-| `ConfigMap` | `team-a-gateway` | `spec.infrastructure.parametersRef` target: autoscaler and disruption budget, pod labels with the tenant (M3) |
-| `Certificate` (or a platform-provided Secret) | `team-a-tls` | the listener's certificate (Q10) |
-| `AuthPolicy` | `team-a-baseline` | targets the `Gateway`; `overrides` with `strategy: merge`: a fixed top-level condition; JWT from the platform issuer, with the issuer pinned and the audience checked; the tenant floor (the token must carry some `api.team-a.` value); `x-sub` and `x-roles` set from the token; `azp` and `tier` exported for the rate limit (K2–K4, K6, K10) |
-| `AuthPolicy` | `team-a-deny-<listener>` | one per listener (`sectionName`, A5), extra-hostname listeners included; `defaults`: refuse every request; a route-level policy replaces it (K6, Q3) |
-| `RequestAuthentication` + Istio `AuthorizationPolicy` | `team-a-jwt-floor` | target the `Gateway`; Istio itself refuses a request without a valid token from the platform issuer, even before Connectivity Link has programmed a new route (M6, Q13) |
-| `RateLimitPolicy` | `team-a-tiers` | targets the `Gateway`; `overrides`: one limit per tier, counted per caller (K5, K6) |
+| `Gateway` (class `istio`, from the ambient mesh's own control plane, K1) | `api-gateway` | One HTTPS listener `tenant` for `*.team-a.apis.example.com`, routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); Service Mesh deploys `api-gateway-istio` (M3) |
+| `ConfigMap` | `api-gateway-infra` | `spec.infrastructure.parametersRef` target: autoscaler and disruption budget, pod labels with the tenant (M3) |
+| `Certificate` (or a platform-provided Secret) | `api-gateway-tls` | the listener's certificate (Q10) |
+| `AuthPolicy` | `api-gateway-baseline` | targets the `Gateway`; `overrides` with `strategy: merge`: a fixed top-level condition; JWT from the platform issuer, with the issuer pinned and the audience checked; the tenant floor (the token must carry some `api.team-a.` value); `x-sub` and `x-roles` set from the token; `azp` and `tier` exported for the rate limit (K2–K4, K6, K10) |
+| `AuthPolicy` | `api-gateway-deny-<listener>` | one per listener (`sectionName`, A5), extra-hostname listeners included; `defaults`: refuse every request; a route-level policy replaces it (K6, Q3) |
+| `RequestAuthentication` + Istio `AuthorizationPolicy` | `api-gateway-jwt-floor` | target the `Gateway`; Istio itself refuses a request without a valid token from the platform issuer, even before Connectivity Link has programmed a new route (M6, Q13) |
+| `RateLimitPolicy` | `api-gateway-tiers` | targets the `Gateway`; `overrides`: one limit per tier, counted per caller (K5, K6) |
 
 A policy holds bare rules, `defaults` or `overrides`, never two of them (K6).
 So the baseline and the default deny are policies at two levels: the
@@ -75,14 +91,14 @@ tokens). The render check refuses any route-level `authentication` rule or
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: team-a
-  namespace: mto-api-gateways
+  name: api-gateway
+  namespace: team-a-dev
   labels: { stakater.com/tenant: team-a }
 spec:
   gatewayClassName: istio
   infrastructure:
     labels: { stakater.com/tenant: team-a }
-    parametersRef: { group: "", kind: ConfigMap, name: team-a-gateway }
+    parametersRef: { group: "", kind: ConfigMap, name: api-gateway-infra }
   listeners:
     - name: tenant
       hostname: "*.team-a.apis.example.com"
@@ -90,7 +106,7 @@ spec:
       protocol: HTTPS
       tls:
         mode: Terminate
-        certificateRefs: [{ name: team-a-tls }]
+        certificateRefs: [{ name: api-gateway-tls }]
       allowedRoutes:
         kinds: [{ kind: HTTPRoute }]
         namespaces:
@@ -106,10 +122,10 @@ them):
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
-  name: team-a-baseline
-  namespace: mto-api-gateways
+  name: api-gateway-baseline
+  namespace: team-a-dev
 spec:
-  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: team-a }
+  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }
   overrides:
     strategy: merge          # keep the route's own rules (K6)
     when:                    # fixed; a route can't add a condition that skips the policy
@@ -147,10 +163,10 @@ spec:
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
-  name: team-a-deny-tenant   # one per listener: team-a-deny-<listener>
-  namespace: mto-api-gateways
+  name: api-gateway-deny-tenant   # one per listener: api-gateway-deny-<listener>
+  namespace: team-a-dev
 spec:
-  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: team-a, sectionName: tenant }
+  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway, sectionName: tenant }
   defaults:                  # atomic: a route-level policy replaces all of it
     rules:
       authorization:
@@ -164,10 +180,10 @@ spec:
 apiVersion: kuadrant.io/v1
 kind: RateLimitPolicy
 metadata:
-  name: team-a-tiers
-  namespace: mto-api-gateways
+  name: api-gateway-tiers
+  namespace: team-a-dev
 spec:
-  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: team-a }
+  targetRef: { group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }
   overrides:
     limits:
       gold:
@@ -189,16 +205,16 @@ The Istio-native token floor (no `EnvoyFilter`; M6):
 ```yaml
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
-metadata: { name: team-a-jwt-floor, namespace: mto-api-gateways }
+metadata: { name: api-gateway-jwt-floor, namespace: team-a-dev }
 spec:
-  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: team-a }]
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }]
   jwtRules: [{ issuer: https://sso.example.com/realms/apis }]
 ---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
-metadata: { name: team-a-jwt-floor, namespace: mto-api-gateways }
+metadata: { name: api-gateway-jwt-floor, namespace: team-a-dev }
 spec:
-  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: team-a }]
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }]
   action: DENY
   rules:
     - from: [{ source: { notRequestPrincipals: ["*"] } }]
@@ -206,13 +222,16 @@ spec:
 
 Tier names, rates, the tier claim, the caller claim (`azp`), issuer, audience,
 the allowed-APIs claim and the header names are **bootstrap values**, one set
-per cluster (ADR-0004). Example rates are the ones we see in practice.
+per cluster (ADR-0004). `parameters.md` lists every value, and who sets it.
+Example rates are the ones we see in practice.
 `bronze` is the catch-all: a token with no tier, or a tier the platform didn't
 define, gets the lowest limit, never none. The tier claim is a single string
 set by the platform in RHBK; callers can't choose it.
 
-Which tenants get a gateway is a bootstrap value too: every tenant (default)
-or a list. A tenant without a gateway has no listener, so its routes attach
+Which tenants may request a gateway is a bootstrap value too: every tenant
+(default) or a list. No tenant gets a gateway until its team asks, so an idle
+tenant runs no pods. A tenant without a gateway has no listener, so its
+routes attach
 nowhere.
 
 ### 3.2 Per API, in the route's namespace (per-tenant chart)
@@ -222,8 +241,8 @@ For the `HTTPRoute` `orders` in `team-a-dev` with
 
 | Kind | Name | What it does |
 |---|---|---|
-| `AuthPolicy` | `api-gateway-orders` | targets `HTTPRoute` `orders`; replaces the default deny with the allowed-API rule `api.team-a.orders` (ADR-0006) |
-| Istio `AuthorizationPolicy` | `api-gateway-orders-<service>` | one per backend Service of the route (every `backendRef`, mirrors included); selects the Service's pods; `DENY` on the Service's target ports from any identity but the tenant gateway's (ADR-0007, M4, M9) |
+| `AuthPolicy` | `api.orders` | targets `HTTPRoute` `orders`; replaces the default deny with the allowed-API rule `api.team-a.orders` (ADR-0006) |
+| Istio `AuthorizationPolicy` | `api.orders.<service>` | one per backend Service of the route (every `backendRef`, mirrors included); selects the Service's pods; `DENY` on the Service's target ports from any identity but the tenant gateway's (ADR-0007, M4, M9) |
 
 The route-level `AuthPolicy` is rendered **only when every backend can be
 locked**: each `backendRef` is a `Service` with a selector, in the route's
@@ -235,7 +254,7 @@ extension fails closed.
 apiVersion: kuadrant.io/v1
 kind: AuthPolicy
 metadata:
-  name: api-gateway-orders
+  name: api.orders
   namespace: team-a-dev
 spec:
   targetRef: { group: gateway.networking.k8s.io, kind: HTTPRoute, name: orders }
@@ -249,7 +268,7 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: api-gateway-orders
+  name: api.orders.orders
   namespace: team-a-dev
 spec:
   selector:
@@ -258,7 +277,7 @@ spec:
   rules:
     - from:
         - source:
-            notPrincipals: [cluster.local/ns/mto-api-gateways/sa/team-a-istio]
+            notPrincipals: [cluster.local/ns/team-a-dev/sa/api-gateway-istio]
       to:
         - operation:
             ports: ["8080"]            # the Service's target ports only
@@ -335,19 +354,27 @@ closed-segment rule is the contract either way.
 
 | Object | Name | Budget |
 |---|---|---|
-| `Gateway` | `<tenant>` | tenant name ≤ 63 (label value) |
-| Gateway Deployment, Service, ServiceAccount | `<tenant>-istio` (M3) | tenant ≤ 57 |
-| Gateway-level objects | `<tenant>-baseline`, `<tenant>-deny-<listener>` (listeners `tenant`, `extra-<n>`), `<tenant>-jwt-floor`, `<tenant>-tiers`, `<tenant>-gateway`, `<tenant>-tls` | tenant ≤ 48 |
-| Route-level objects | `api-gateway-<api>`, `api-gateway-<api>-<service>` | API name + Service name ≤ 50 |
+| `Gateway` | `<request>`: the `TemplateInstance` name | a DNS label ≤ 48 (the parent refuses others) |
+| Gateway Deployment, Service, ServiceAccount | `<request>-istio` (M3) | fits |
+| Gateway-level objects | `<request>-baseline`, `<request>-deny-<listener>` (listeners `tenant`, `extra-<n>`), `<request>-jwt-floor`, `<request>-tiers`, `<request>-infra`, `<request>-tls`, `<request>-tls-extra-<n>`, `<request>-status` | request ≤ 48, so the longest stays ≤ 63 |
+| Route-level objects | `api.<api>`, `api.<api>.<service>`: dot-joined, so they never meet a request's hyphen-joined names | API name + Service name ≤ 240 |
 | Hostname | `*.<tenant>.<base domain>` | DNS limits: label ≤ 63, name ≤ 253 |
 
-The parent skips a tenant whose name is not a DNS label or is longer than
-48 characters, and one named like a reserved name, and lists it in the
-skipped-tenants ConfigMap with the reason.
+The parent skips a tenant whose name is not a DNS label or is longer than 63
+characters (a label value), and refuses a request whose name is not a DNS
+label of at most 48 characters. Both are listed, with the reason, in the
+skipped-tenants ConfigMap (`mto-extension-api-gateway-skipped-tenants`), keys
+`<tenant>` and `request.<namespace>.<name>`.
 
 ## 7. Status, skips and conflicts
 
-The per-tenant chart renders one ConfigMap, `api-gateway-status`, in each
+Every request renders its own status ConfigMap, `<request>-status`, in its
+namespace: `status: ok` with the tenant and the host names, or
+`status: refused` with the reason (not a tenant namespace, an invalid name,
+or "tenant team-a already has its API gateway, from TemplateInstance
+team-a-dev/api-gateway").
+
+The per-tenant chart (G.3) renders one ConfigMap, `api-gateway-apis`, in each
 tenant namespace that has a route attached to the tenant gateway:
 
 | Key | Lists |
@@ -359,16 +386,19 @@ tenant namespace that has a route attached to the tenant gateway:
 | `outside-mesh` | a route whose namespace lacks the mesh labels (M5): the route serves nothing |
 | `unattached` | annotated routes the gateway didn't accept, with the reason from the route's status (for example a host outside the tenant's hostnames) |
 
-The parent lists **hostname conflicts** in the skipped-tenants ConfigMap: an
-extra hostname granted to two tenants, or one that falls inside another
-tenant's `*.<tenant>.<base domain>`. The check is a wildcard intersection,
-not an equality. Neither tenant gets a conflicting hostname.
+The parent refuses an extra hostname that is not a valid host name, that
+overlaps the base domain (reserved for `<tenant>.<base domain>` names, also
+of tenants that don't exist yet), or that overlaps an extra hostname of
+another tenant. Overlap is a wildcard intersection, not an equality:
+`*.wild.example.org` overlaps `x.wild.example.org`. Neither tenant gets a
+conflicting hostname. Refusals are listed in the skipped-tenants ConfigMap
+under `<tenant>.hostnames`, one line per host.
 
 ## 8. Health and preflight
 
 - **Preflight** (bootstrap chart, at install and on upgrade): the GatewayClass
-  exists; the Gateway API, Connectivity Link and Istio security CRDs exist; a
-  `Kuadrant` instance is ready; the issuer URL is set. A missing piece fails the
+  exists; the Gateway API, Kuadrant (`kuadrant.io`) and Istio security CRDs
+  exist; a `Kuadrant` instance is ready; the issuer URL is set. A missing piece fails the
   install and names it.
 - **Outputs** (Template Operator status outputs, as in the Enterprise
   extension): per tenant, the gateway's `Programmed` condition and each
@@ -378,7 +408,9 @@ not an equality. Neither tenant gets a conflicting hostname.
 ## 9. Install requirements
 
 - OpenShift with Gateway API CRDs, OpenShift Service Mesh 3 in ambient mode,
-  and Red Hat Connectivity Link with a ready `Kuadrant` instance (K1).
+  and a Kuadrant policy controller with a ready `Kuadrant` instance: Red Hat
+  Connectivity Link 1.4.1 or later is the tested one; upstream Kuadrant at the
+  matching version is allowed, untested and unsupported (K1, ADR-0011).
 - Template Operator v2 at the version the Enterprise extension needs (T2), with
   RBAC on the kinds of §3 (Q6).
 - The Multi-Tenant Operator; tenant namespaces with the mesh labels set
@@ -394,13 +426,13 @@ not an equality. Neither tenant gets a conflicting hostname.
 - **No tenant may claim a host under the base domain at any entry point.** A
   tenant can create OpenShift `Route`s; one for `dev.team-a.<base domain>` on
   the shared router would receive callers' tokens. So the base domain gets its
-  own entry point (a dedicated IngressController for the gateway namespace, or
-  a load balancer), DNS for the base domain points only there, and admission
+  own entry point (a dedicated IngressController for the tenant gateways, or a
+  load balancer), DNS for the base domain points only there, and admission
   refuses a tenant's OpenShift `Route` under the base domain (G.8, Q10).
 - The gateway class is `istio`, from the ambient mesh's control plane. The
   OpenShift-provided `openshift-default` class runs a separate control plane
   and certificate authority, so its gateway has no identity the ambient
-  backends trust, and the backend lock can't work (K1).
+  backends trust, and the backend lock can't work (K1, ADR-0010).
 
 ## 10. Where this differs from the first proposal
 
@@ -411,14 +443,15 @@ allowed-API rule, one upgrade for all. It differs in four places:
 
 | First proposal | This design | Why |
 |---|---|---|
-| a `TemplateInstance` per API, written by the team | an annotated `HTTPRoute`, written by the team | the standard API; no new contract to learn (ADR-0005) |
-| one gateway per API | one gateway per tenant | fewer idle pods, one place for the baseline (ADR-0002) |
+| a `TemplateInstance` per API, with parameters | one `TemplateInstance` per tenant for the gateway, with no parameters; an annotated `HTTPRoute` per API | the team still asks with a `TemplateInstance`, but it carries nothing a team could get wrong; APIs use the standard API (ADR-0002, ADR-0005) |
+| one gateway per API | one gateway per tenant, only when the team asks | fewer idle pods, one place for the baseline (ADR-0002) |
 | `EnvoyFilter` for headers and rate limit | Connectivity Link policies | supported through upgrades (ADR-0003) |
 | `api-<name>-consumer-*` | `api.<tenant>.<api>`, closed | no collision across tenants, no wildcard (ADR-0006) |
 
 It also answers the proposal's open point about two namespaces: the route and
 its backend are in one namespace, so the per-tenant chart renders both
-route-level objects there, and the gateway lives in the platform namespace.
+route-level objects there; the gateway lives in the namespace the team chose
+for its request.
 
 ## 11. What this design can't do (documented, not hidden)
 
@@ -426,6 +459,10 @@ route-level objects there, and the gateway lives in the platform namespace.
   (G.13 if ever needed).
 - **Identity-provider roles are manual.** The platform creates
   `api.<tenant>.<api>` roles in RHBK (G.11).
+- **The gateway's pods run in the team's namespace** and count against the
+  tenant's quota. A quota too small for the autoscaler's minimum keeps the
+  gateway from starting; the request's status can't see that, the
+  `Gateway`'s `Programmed` condition does.
 - **A shared gateway still shares pods.** One tenant's APIs share one gateway's
   capacity (G.12 for an API that needs its own).
 - **The backend lock covers the API's ports on the pods behind annotated

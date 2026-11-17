@@ -42,7 +42,7 @@ fix is only done when a regression test pins the behaviour it fixed.
 | Approval gate | human in the loop | 📝 Draft → 👍 Approved only by a human | `.github/CODEOWNERS` owns `docs/roadmap.md` and `docs/adr/`; branch protection requires a code owner's review |
 | PRs trace to a story | traceability | every PR cites its story code | PR workflow: `check_method.py pr-body` fails without a known code or `No story: <reason>` |
 | Immutable decisions | ADRs (Nygard) | `docs/adr/`, superseded never edited | PR workflow: `check_method.py adr-diff` fails if an Accepted ADR changes beyond `Superseded by ADR-NNNN`; `make method` checks status values and the index |
-| Test first | TDD (Beck) | a failing render test (golden, schema, security-baseline check) or acceptance check before the change | review today; `make verify` once G.1 adds the render harness (gap below) |
+| Test first | TDD (Beck) | a failing render test (golden, schema, security-baseline check) or acceptance check before the change | `make charts` in `make verify`: the render harness (golden, emission, listener, CRD validation, …) with its guards mutation-tested; review for test-first order |
 | Green before done | Definition of Done | `make verify` green, output seen | `make verify` locally; the same target in CI on every PR |
 | Docs move with the code | docs as source of truth | a change that leaves `docs/` stale is unfinished | `make lint` (markdownlint) and `make links` (every relative link resolves); review |
 | Facts before design | evidence over inference | product behaviour cited to `gateway-baseline.md` rows; unknowns marked VERIFY | review; G.0 |
@@ -56,7 +56,6 @@ fix is only done when a regression test pins the behaviour it fixed.
 
 | Gap | Until it closes | Story |
 |---|---|---|
-| No chart yet, so "red first" has no render test to fail | review enforces test-first | G.1 adds the render harness to `make verify` |
 | The `verify` check is not yet a required status check, so a red PR can still be merged | reviewers don't merge red | DX.1 |
 | Nothing runs on each local edit (kube-ward has a PostToolUse hook) | `make verify` before pushing; CI is the backstop | DX.2 |
 

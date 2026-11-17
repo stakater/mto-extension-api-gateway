@@ -1,0 +1,33 @@
+# Parent TemplateInstance — the only TemplateInstance the chart installs. It
+# lists every Tenant, every Namespace and every TemplateInstance cluster-wide
+# and feeds the three lists to the parent gotemplate. A team's request (a
+# TemplateInstance of the api-gateway Template) is one of them.
+---
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: TemplateInstance
+metadata:
+  name: mto-extension-api-gateway-parent
+  namespace: {{ .Release.Namespace }}
+spec:
+  templateRef:
+    name: mto-extension-api-gateway-parent
+    namespace: {{ .Release.Namespace }}
+  parameters:
+    - name: tenants
+      valueFrom:
+        objectFieldRef:
+          apiVersion: tenantoperator.stakater.com/v1beta3
+          kind: Tenant
+          jsonPath: .items
+    - name: tenantNamespaces
+      valueFrom:
+        objectFieldRef:
+          apiVersion: v1
+          kind: Namespace
+          jsonPath: .items
+    - name: templateInstances
+      valueFrom:
+        objectFieldRef:
+          apiVersion: templates.v2.stakater.com/v2alpha1
+          kind: TemplateInstance
+          jsonPath: .items

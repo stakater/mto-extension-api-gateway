@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["templateOperator", "tenantLabelKey", "tenants", "gateway", "templateSync"],
+  "properties": {
+    "global": { "type": "object" },
+    "templateOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceAccountName", "namespace"],
+      "properties": {
+        "serviceAccountName": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tenantLabelKey": { "type": "string", "minLength": 1 },
+    "tenants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["all", "list"] },
+        "list": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", "maxLength": 63 }
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["className", "baseDomain", "port", "autoscaling", "podDisruptionBudget", "tls"],
+      "properties": {
+        "className": { "enum": ["istio"] },
+        "baseDomain": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+          "maxLength": 180
+        },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "extraHostnames": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "autoscaling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"],
+          "properties": {
+            "minReplicas": { "type": "integer", "minimum": 2 },
+            "maxReplicas": { "type": "integer", "minimum": 2 },
+            "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        },
+        "podDisruptionBudget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minAvailable"],
+          "properties": { "minAvailable": { "type": "integer", "minimum": 1 } }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "certManager": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "issuerRef": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": { "enum": ["ClusterIssuer", "Issuer"] },
+                    "name": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "templateSync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": { "mode": { "enum": ["revert", "strict"] } }
+    }
+  }
+}

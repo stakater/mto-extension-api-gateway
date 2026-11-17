@@ -25,10 +25,11 @@ gateway layer doesn't use that knowledge.
 
 ## The vision
 
-> **One tenant definition, carried into the API gateway.** Every tenant gets
-> its own gateway, with the platform's security baseline built in and not
-> switchable. A team publishes an API with a standard `HTTPRoute` and one
-> annotation. Token check, allowed-API check, header handling and rate limits
+> **One tenant definition, carried into the API gateway.** Every tenant can
+> ask for its own gateway, with the platform's security baseline built in and
+> not switchable. The team asks once, with one parameterless
+> `TemplateInstance`, and publishes each API with a standard `HTTPRoute` and
+> one annotation. Token check, allowed-API check, header handling and rate limits
 > come from supported Red Hat Connectivity Link policies, not from patches.
 
 The product abstraction is **Tenant → API gateway**. Underneath, it is plain
