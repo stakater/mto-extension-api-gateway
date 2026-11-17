@@ -1,5 +1,11 @@
 # Concepts
 
+> **Pending decision (2026-11-17).** ADR-0003 now proposes Istio-native
+> policies plus two platform-owned, tested `EnvoyFilter`s instead of Kuadrant
+> (Connectivity Link) policies; ADR-0011 is rejected. This page still
+> describes the Kuadrant form. It changes when the code owner decides; until
+> then, ADR-0003 and ADR-0004 describe the proposed form.
+
 A plain-language primer. One running example throughout: tenant **`team-a`**,
 namespaces **`team-a-dev`** and **`team-a-test`**, API **`orders`** (Service
 `orders` in `team-a-dev`, served at `/orders/v1`, published at `/orders/v2`),

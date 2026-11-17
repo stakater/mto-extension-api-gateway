@@ -26,6 +26,9 @@ product changes, update this file first.
 | M7 | `RequestAuthentication` `outputClaimToHeaders`: "The header will be overridden if it already exists in the request." Only string, int and bool claims. | The fallback could replace `x-sub`, but not a list claim such as `allowed_apis` in `x-roles`. | [Istio: RequestAuthentication](https://istio.io/latest/docs/reference/config/security/request_authentication/) |
 | M8 | A pod labelled `istio.io/dataplane-mode=none` is left out of ambient, even in a namespace enrolled with `istio.io/dataplane-mode=ambient`. | A tenant could take its own backend out of the mesh and so out of the backend lock. Admission refuses the label on tenant pods (ADR-0008). | [Istio: add workloads to ambient](https://istio.io/latest/docs/ambient/usage/add-workloads/) |
 | M9 | ztunnel enforces L4 policy at the destination for traffic from outside the mesh as well; such a caller has no mTLS identity, so it matches no `principals` and every `notPrincipals`. | The lock is a `DENY` on `notPrincipals`: a caller outside the mesh is refused too. A monitoring scraper outside the mesh can't be allowed by principal, so the lock covers only the API's ports. | [Istio: L4 policy in ambient](https://istio.io/latest/docs/ambient/usage/l4-policy/) |
+| M10 | An `AuthorizationPolicy` condition `request.auth.claims[<claim>]` matches exact values, prefixes (`abc*`), suffixes and presence; for a list claim, the condition holds when any value matches. | The allowed-API rule is an Istio condition: `api.<tenant>.<api>` and `api.<tenant>.<api>.*` (ADR-0006). Prefix matching on a list claim is observed in M11. **VERIFY** a missing claim and a string claim in G.0. | [Istio: authorization policy conditions](https://istio.io/latest/docs/reference/config/security/conditions/) |
+| M11 | Kind lab, 2026-11-17, upstream Istio ambient, with the three hand-written gateway `EnvoyFilter`s of the pattern in `vision.md` (header removal before `jwt_authn`, a Lua tier lookup and Envoy's rate limit filter before `router`, a route-configuration header): all applied unchanged on Istio 1.27.9, 1.28.10, 1.29.10 and 1.30.8, with no proxy rejection and no istiod warning. From 1.28 Istio names the gateway's route configuration with `~` instead of `-`. The Lua lookup built a pattern from an API name without escaping `-`, so every caller of a hyphenated API got the lowest tier. With the rate limit service down and fail-open set, nothing was limited. `outputClaimToHeaders` sent a list claim as base64-encoded JSON. A list claim matched an `AuthorizationPolicy` prefix condition. `kubectl apply` of an `EnvoyFilter` warns that it "exposes internal implementation details that may change at any time". | Hand-written filters can be tested per Istio version; the risk is untested custom code and matching generated names (ADR-0003). | Stakater lab run (not published; scripts reproducible on request) |
+| M12 | An `ALLOW` `AuthorizationPolicy` with no rules matches nothing, so the workload refuses every request that no other `ALLOW` policy allows; `DENY` policies are evaluated before `ALLOW`. | The gateway's default deny is an empty `ALLOW`; the token floor is a `DENY` that no `ALLOW` can open (ADR-0004). **VERIFY** with `targetRefs` to a `Gateway` in G.0. | [Istio: authorization policy](https://istio.io/latest/docs/reference/config/security/authorization-policy/) |
 
 ## 2. Gateway API
 
@@ -65,6 +68,10 @@ product changes, update this file first.
 ---
 
 ## Open questions (VERIFY), owned by story G.0
+
+With ADR-0003 rewritten on 2026-11-17 (Istio-native policies, no Kuadrant), Q1,
+Q3, Q13, Q14 and Q15 apply only to its Kuadrant alternative. Q2 and Q4 apply to
+the Istio form as written in M10 and M11.
 
 | # | Question | Decides |
 |---|---|---|

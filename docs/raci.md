@@ -33,12 +33,14 @@ What that costs — the failure modes this extension removes (`vision.md`):
 
 ## With the extension (one tenant gateway, standard routes)
 
-The gateway becomes a platform-owned, per-tenant `Gateway` rendered by the
-bootstrap chart; an API team publishes an API with a standard `HTTPRoute` plus
-one annotation (ADR-0005). The security baseline is Connectivity Link
-gateway-level `overrides` plus an Istio token floor (ADR-0004); the allowed-API
-rule is derived and tenant-qualified (ADR-0006); the backend is locked with a
-`DENY` (ADR-0007); mesh labels come from the `Tenant`.
+The gateway becomes a platform-defined, per-tenant `Gateway`: a team requests
+it with one parameterless `TemplateInstance`, and Template Operator renders it
+in the team's namespace (ADR-0002). An API team publishes an API with a
+standard `HTTPRoute` plus one annotation (ADR-0005). The security baseline is
+platform-rendered Istio policy plus two platform-owned, tested `EnvoyFilter`s
+(ADR-0003, ADR-0004, proposed); the allowed-API rule is derived and
+tenant-qualified (ADR-0006); the backend is locked with a `DENY` (ADR-0007);
+mesh labels come from the `Tenant`.
 
 **R** = does the work · **A** = owns the result · **C** = consulted ·
 **I** = informed. The last column is what changes from the copy-the-chart model.
@@ -46,11 +48,12 @@ rule is derived and tenant-qualified (ADR-0006); the backend is locked with a
 | Task | Platform team | API team | Change from today |
 |---|---|---|---|
 | Service Mesh version and settings | R, A | I | same |
-| Connectivity Link and its limiter (tiers) | R, A | I | **new** — replaces the Envoy rate-limit service and the `EnvoyFilter` patches (ADR-0003) |
+| The rate limit service and its tiers | R, A | I | same service; the tiers become platform values, and the header and rate limit `EnvoyFilter`s become platform-owned and tested on each Istio upgrade (ADR-0003) |
 | Identity provider realm, clients, `api.<tenant>.<api>` roles | R, A | C | same (automated from the route later, G.11) |
 | `Tenant`: namespaces and mesh labels | R, A | C | same |
 | **The gateway charts and the Template** | R, A | I | **moves to platform** (each team copied the chart today) |
-| **The per-tenant gateway and its security baseline** (token check, allowed-API override, header handling, rate limit, deny-by-default) | R, A | I | **moves to platform** (switches in each team's values today) |
+| **Request the tenant's gateway** (one parameterless `TemplateInstance`) | A | R | **new** — one request per tenant; the platform decides how the gateway runs (ADR-0002) |
+| **The per-tenant gateway and its security baseline** (token check, allowed-API rule, header handling, rate limit, deny-by-default) | R, A | I | **moves to platform** (switches in each team's values today) |
 | **Autoscaling the gateway** (HPA, PDB) | R, A | I | **new** — fixed replica counts per API today (ADR-0002) |
 | **Upgrading every gateway** | R, A | I | **moves to platform** (each team, by hand, today) |
 | Publish an API (a standard annotated `HTTPRoute`) | C | R, A | **changed** — a copied values file becomes a standard `HTTPRoute` + one annotation (ADR-0005) |

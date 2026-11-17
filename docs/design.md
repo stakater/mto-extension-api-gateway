@@ -1,5 +1,11 @@
 # Design
 
+> **Pending decision (2026-11-17).** ADR-0003 now proposes Istio-native
+> policies plus two platform-owned, tested `EnvoyFilter`s instead of Kuadrant
+> (Connectivity Link) policies; ADR-0011 is rejected. This page (§3.1, §3.2, §4, §5 and §8) still
+> describes the Kuadrant form. It changes when the code owner decides; until
+> then, ADR-0003 and ADR-0004 describe the proposed form.
+
 **Status:** proposed; every story is Draft. Baseline: OpenShift Service Mesh 3
 in ambient mode, Gateway API v1, Red Hat Connectivity Link, Template Operator
 v2 (versions in `gateway-baseline.md`). Facts are cited to

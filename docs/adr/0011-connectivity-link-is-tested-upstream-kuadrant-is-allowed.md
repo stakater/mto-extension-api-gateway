@@ -1,14 +1,18 @@
 # ADR-0011: Connectivity Link is the tested policy controller; upstream Kuadrant is allowed
 
-- **Status:** Proposed
+- **Status:** Rejected
 - **Date:** 2026-11-17
+
+**Rejected on 2026-11-17**, with the rewrite of ADR-0003: the extension uses
+no Kuadrant API for now, so which product runs it is not a decision to take.
+It is kept as the record of the comparison, for when ADR-0003's revisit
+conditions are met.
 
 ## Context
 
-Raised in the review of PR #1 (2026-11-16); open for review by the code owner
-and by the engineer who built today's gateway setup.
+Raised in the review of PR #1 (2026-11-16).
 
-ADR-0003 chooses the Kuadrant policy API (`kuadrant.io/v1` `AuthPolicy` and
+The first version of ADR-0003 chose the Kuadrant policy API (`kuadrant.io/v1` `AuthPolicy` and
 `RateLimitPolicy`). Two products implement it:
 
 | | Upstream Kuadrant | Red Hat Connectivity Link |

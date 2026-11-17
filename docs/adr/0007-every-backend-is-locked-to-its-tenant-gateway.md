@@ -23,7 +23,7 @@ ztunnel gives every workload an mTLS identity and enforces L4 authorization
   on the same pods would widen the lock. A `DENY` can't be widened.
 - **Fail closed.** A backend that can't be locked — no selector, an
   `ExternalName`, another kind, or a namespace outside the mesh — gets no
-  route-level `AuthPolicy`, so the route keeps the default deny and serves
+  allowed-API rule, so the route keeps the default deny and serves
   nothing. A pod can't opt out of the mesh: admission refuses
   `istio.io/dataplane-mode` on tenant pods (M8, ADR-0008).
 - **L4 only, enforced by ztunnel.** No waypoint is required. A team that runs a

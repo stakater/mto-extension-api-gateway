@@ -16,7 +16,7 @@ with a `hostname` only accepts routes whose hostnames intersect it (A3).
   (`apis.example.com`).
 - The platform may grant a tenant extra hostnames (bootstrap value, per
   tenant). Each extra hostname gets its own listener on that tenant's gateway.
-  Each extra listener gets its own default deny (ADR-0004). The parent
+  The gateway's default deny covers every listener (ADR-0004). The parent
   refuses an extra hostname that overlaps the base domain (reserved for
   tenant names, including tenants created later) or overlaps another
   tenant's extra hostname (a wildcard intersection, not an equality), and

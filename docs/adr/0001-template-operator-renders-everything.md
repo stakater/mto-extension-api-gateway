@@ -7,8 +7,8 @@
 
 Every object this extension needs already has a supported API: the Gateway API
 `Gateway` and `HTTPRoute`, Service Mesh's gateway deployment (M3), Istio's
-`AuthorizationPolicy`, and Connectivity Link's `AuthPolicy` and
-`RateLimitPolicy` (K2–K6). None of them needs a controller of ours to
+`RequestAuthentication` and `AuthorizationPolicy` (M6), and the few
+platform-owned `EnvoyFilter`s of ADR-0003. None of them needs a controller of ours to
 reconcile it. The other Multi-Tenant Operator extensions
 (`mto-extension-vault-enterprise`, `mto-extension-openbao`) use one pattern
 for this: a bootstrap chart, installed once, renders a parent
@@ -47,7 +47,7 @@ an API team instantiates once per API.
   needs a loop over live traffic, or an external system (RHBK), needs another
   tool (story G.11).
 - Template Operator's service account needs RBAC on Gateway API, Istio and
-  Connectivity Link kinds. The chart lists exactly those (Q6).
+  `EnvoyFilter` kinds. The chart lists exactly those (Q6).
 
 ## Alternatives
 

@@ -1,5 +1,11 @@
 # Vision
 
+> **Pending decision (2026-11-17).** ADR-0003 now proposes Istio-native
+> policies plus two platform-owned, tested `EnvoyFilter`s instead of Kuadrant
+> (Connectivity Link) policies; ADR-0011 is rejected. This page (the Connectivity Link promise and principle 3) still
+> describes the Kuadrant form. It changes when the code owner decides; until
+> then, ADR-0003 and ADR-0004 describe the proposed form.
+
 ## The problem
 
 Platform teams on OpenShift publish many internal APIs to callers outside the

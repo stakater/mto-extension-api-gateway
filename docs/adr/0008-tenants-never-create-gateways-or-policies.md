@@ -5,18 +5,20 @@
 
 ## Context
 
-A tenant that can create a `Gateway`, an `EnvoyFilter`, a `WasmPlugin`, or a
-Connectivity Link policy can open a new entry point or change what a gateway
+A tenant that can create a `Gateway`, an `EnvoyFilter`, a `WasmPlugin`, or an
+Istio policy on a gateway can open a new entry point or change what a gateway
 does. The Service Mesh extension (in design) refuses tenant-created
 `Gateway`s, `EnvoyFilter`s and `WasmPlugin`s at admission, and allows tenants
-`HTTPRoute`s. Connectivity Link policies must be in the same namespace as their
-target (K8), so a route-level policy lives in a tenant namespace.
+`HTTPRoute`s. The tenant gateway runs in a tenant namespace (ADR-0002), and an
+Istio policy that targets it must be in that namespace (M6). Istio has no
+overrides: an extra `ALLOW` policy adds access, and an extra
+`RequestAuthentication` adds an issuer (ADR-0004).
 
 ## Decision
 
-- **Only the platform and Template Operator create** `Gateway`s, `AuthPolicy`,
-  `RateLimitPolicy` and Istio `AuthorizationPolicy` objects for this
-  extension. Tenants create `HTTPRoute`s, and ask for their gateway with a
+- **Only the platform and Template Operator create** `Gateway`s, the
+  gateway's `RequestAuthentication` and `AuthorizationPolicy` objects, its
+  `EnvoyFilter`s, and the backend locks for this extension. Tenants create `HTTPRoute`s, and ask for their gateway with a
   parameterless `TemplateInstance` of `api-gateway` (ADR-0002); Template
   Operator renders the gateway in strict mode, so the tenant can't edit or
   delete it.
@@ -25,19 +27,19 @@ target (K8), so a route-level policy lives in a tenant namespace.
        Multi-Tenant Operator's roles and the products' aggregated roles give
        today).
     1. Admission: a `ValidatingAdmissionPolicy` refuses a tenant's
-       `AuthPolicy`, `RateLimitPolicy`, `Gateway`, `EnvoyFilter`,
-       `WasmPlugin` and `TrafficExtension`, and an `HTTPRoute` with a
+       `Gateway`, `EnvoyFilter`, `WasmPlugin` and `TrafficExtension`; a
+       `RequestAuthentication` or `AuthorizationPolicy` that targets a
+       `Gateway` or selects a gateway's pods; and an `HTTPRoute` with a
        `parentRef` to another tenant's gateway; the label
        `istio.io/dataplane-mode` on a tenant pod (M8); and a tenant's OpenShift
        `Route` for a host under the base domain. The policy matches requests
        from tenant users only. It lets through Template Operator, which renders
-       the gateway and its policies in the tenant's namespace (ADR-0002), and
-       the Connectivity Link operator, which creates its own `EnvoyFilter`s in
-       the gateway's namespace (K7). When the Service Mesh extension is
+       the gateway and its policies in the tenant's namespace (ADR-0002).
+       When the Service Mesh extension is
        installed, its policies cover the shared kinds and this extension adds
        only its own.
-    1. Overrides: even a policy that got through can't weaken the baseline
-       (ADR-0004).
+    1. The token floor: even an `ALLOW` policy that got through can't let in
+       a request without a valid platform token; `DENY` wins (ADR-0004).
 
 ## Consequences
 
@@ -50,6 +52,6 @@ target (K8), so a route-level policy lives in a tenant namespace.
 
 - **Trust RBAC alone.** Rejected: aggregated roles change when a product is
   installed; one missed rule opens a write.
-- **Let tenants write route-level policies.** Rejected for now: overrides make
-  it safe for the baseline, but a tenant-written allowed-API rule is free text
-  again (ADR-0006).
+- **Let tenants write route-level policies.** Rejected: Istio has no
+  overrides, so a tenant's `ALLOW` would widen the allowed-API rule, and a
+  tenant-written rule is free text again (ADR-0006).

@@ -22,7 +22,8 @@ example `vault.stakater.com/*` on a ServiceAccount) and render the rest.
   same API name in one tenant are both skipped and reported (design §7).
 - The per-tenant chart finds every annotated `HTTPRoute` in the tenant's
   namespaces and renders, in the route's namespace: the route-level
-  `AuthPolicy` with the allowed-API rule (ADR-0006) and the backend lock
+  allowed-API rule (an Istio `AuthorizationPolicy` `ALLOW` rule scoped to the
+  route's hosts and paths, ADR-0006) and the backend lock
   (ADR-0007).
 - The backend `Service` is in the route's own namespace. No `ReferenceGrant`
   is rendered or needed (A2).

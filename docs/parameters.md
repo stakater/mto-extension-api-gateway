@@ -33,8 +33,8 @@ Names of planned values are proposals. Each story fixes the names it builds.
 
 | Today | In this extension | Place | Story |
 |---|---|---|---|
-| `auth.enabled` | the baseline `AuthPolicy` is always rendered, as an override | fixed | G.2 |
-| `rateLimit.enabled` | the tier `RateLimitPolicy` is always rendered, as an override | fixed | G.5 |
+| `auth.enabled` | the token floor, the default deny and the allowed-API rules are always rendered (ADR-0004) | fixed | G.2 |
+| `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003) | fixed | G.5 |
 | `security.allowGatewayAccessOnly` | the backend lock is always rendered; a route whose backend can't be locked serves nothing | fixed | G.4 |
 | `security.waypoint.create`, `security.waypoint.name` | no waypoint. ztunnel enforces the backend lock on the mesh identity (L4) | fixed | G.4 |
 
@@ -54,13 +54,13 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | gateway class `istio` | `gateway.className`, only `istio` | platform value | G.1 ✅ |
 | TLS terminate, the certificate | `gateway.tls.certManager.issuerRef`, or a Secret the platform provides | platform value | G.1 ✅ |
 | rate limit tiers, in the platform's rate limit chart | `rateLimit.tiers` and `rateLimit.tierClaim` | platform value | G.5 |
-| rate limit service and its store | Limitador, from Connectivity Link | prerequisite | — |
-| `EnvoyFilter` that strips caller headers | the baseline `AuthPolicy` sets `x-sub` and `x-roles` from the token | fixed | G.2 |
-| `EnvoyFilter` for the rate limit | the tier `RateLimitPolicy` | fixed | G.5 |
+| rate limit service and its store | a rate limit service that speaks Envoy's rate limit API, with Redis | platform | G.5 |
+| `EnvoyFilter` that strips caller headers | a platform-owned header filter, rendered with every tenant gateway (ADR-0003) | fixed | G.2 |
+| `EnvoyFilter` for the rate limit (with Lua) | a platform-owned rate limit filter with no Lua; tier and caller read as plain claims (ADR-0003) | fixed | G.5 |
 | `EnvoyFilter` for a correlation ID (some APIs) | open: Envoy's own `x-request-id` may be enough (Q11) | platform value, if any | G.0 |
 | `Telemetry`: log format, tracing | per-tenant observability | platform value | G.14 |
 | a log format for one team | per-tenant observability | platform value | G.14 |
-| `RequestAuthentication` (issuer, keys, audience) | the baseline `AuthPolicy`, and the Istio token floor from the same values | fixed, from platform values | G.2 |
+| `RequestAuthentication` (issuer, keys, audience) | the same kind, with the Istio token floor, from platform values | fixed, from platform values | G.2 |
 | `ReferenceGrant` | not rendered | — | — |
 | the chart version, one copy per team | the bootstrap chart's version; one upgrade for all | platform | — |
 
@@ -96,7 +96,8 @@ Names of planned values are proposals. Each story fixes the names it builds.
 |---|---|---|---|
 | `auth.issuerUrl` | none, required | the one token issuer per cluster; also pinned by an `iss` rule | G.2 |
 | `auth.audience` | none, required | the audience a token must carry | G.2 |
-| `auth.jwksUrl` | empty | the key set's URL, when the issuer's host is not reachable from the cluster; the issuer pin still checks `iss` (K2) | G.2 |
+| `auth.jwksUri` | empty | the key set's URL (`RequestAuthentication` `jwksUri`), when the issuer's host is not reachable from the cluster; the issuer still pins `iss` | G.2 |
+| `rateLimit.failureModeAllow` | to decide in G.5 | whether calls pass when the rate limit service is down; documented as a limit (ADR-0003) | G.5 |
 | `auth.claims.allowedApis` | `allowed_apis` | the list claim with the caller's APIs | G.2, G.3 |
 | `auth.claims.caller` | `azp` | the caller's identity: the `x-sub` header and the rate limit counter | G.2, G.5 |
 | `auth.headers.caller`, `auth.headers.roles` | `x-sub`, `x-roles` | the headers the gateway sets from the token | G.2 |
@@ -145,11 +146,12 @@ Between environments, a route changes only its namespace and its host name
 
 ## 5. Fixed: never a parameter
 
-The token check, the issuer pin and the tenant floor; the header replacement;
-the rate limit; the default deny per listener; the backend lock; HTTPS with
-TLS terminated at the gateway; `allowedRoutes` from the tenant's namespaces
-only, `HTTPRoute` only; the baseline as `overrides` with `strategy: merge`;
-sync mode `strict` for the team-facing Template; no `EnvoyFilter`.
+The token floor and the issuer pin; the default deny; the closed allowed-API
+rule per API; the header replacement; the rate limit; the backend lock; HTTPS
+with TLS terminated at the gateway; `allowedRoutes` from the tenant's
+namespaces only, `HTTPRoute` only; sync mode `strict` for the team-facing
+Template; no `EnvoyFilter` but the two allowlisted platform filters, and no
+Lua (ADR-0003, ADR-0004).
 
 ## 6. Open
 

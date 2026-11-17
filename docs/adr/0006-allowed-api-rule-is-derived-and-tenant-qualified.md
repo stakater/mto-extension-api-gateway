@@ -10,8 +10,8 @@ value matching a free-text pattern in the team's values, such as
 `api-<team>-<api>-consumer-*`. Nothing stops `api-*` or `*`. And with `-`
 joining DNS labels, names collide across tenants: tenant `team` with API
 `a-orders` and tenant `team-a` with API `orders` both give
-`api-team-a-orders`. `AuthPolicy` can authorize on claim values with pattern
-matching or CEL (K3).
+`api-team-a-orders`. An Istio `AuthorizationPolicy` condition on a token
+claim matches any value of a list claim, exactly or by prefix (M10).
 
 ## Decision
 
@@ -19,7 +19,9 @@ matching or CEL (K3).
   that is exactly `api.<tenant>.<api>`, or starts with `api.<tenant>.<api>.`
   (for finer roles such as `api.team-a.orders.read`). The segment after the
   API name is closed by `.`, so `api.team-a.orders` never matches
-  `api.team-a.orders2`.
+  `api.team-a.orders2`. In Istio's condition: the values
+  `api.team-a.orders` (exact) and `api.team-a.orders.*` (prefix that ends in
+  the dot).
 - **`.` joins the parts.** Tenant and API names are DNS labels and contain no
   dot, so a value names exactly one tenant and one API.
 - The platform may change the prefix (`api`) and the claim name, install-wide.

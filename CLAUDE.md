@@ -9,8 +9,9 @@ Multi-Tenant Operator `Tenant` ask for its own API gateway on OpenShift, with
 one parameterless `TemplateInstance` in the namespace where the gateway should
 run (ADR-0002): a Gateway API
 `Gateway` on OpenShift Service Mesh 3, with the platform's security baseline
-built in as Red Hat Connectivity Link policies — token check, allowed-API
-rule, caller headers set from the token, rate limit tiers — and a mesh lock
+built in as Istio policies plus two platform-owned `EnvoyFilter`s — token
+check, allowed-API rule, caller headers set from the token, rate limit tiers —
+and a mesh lock
 that makes the gateway the only way to the backend. An API team publishes an
 API with a standard `HTTPRoute` and one annotation.
 
@@ -35,15 +36,17 @@ the golden only after an intended change: `make golden`.
 
 ## Invariants — never violate these
 
-1. **No `EnvoyFilter`, `WasmPlugin` or `TrafficExtension` in any rendered
-   output** (ADR-0003). Connectivity Link's own managed `EnvoyFilter`s are the
-   product's, not ours.
-1. **The security baseline is a Gateway-level override** (ADR-0004), with
-   `strategy: merge`, a fixed `when` and a pinned issuer: token, tenant floor,
-   header replacement, the `azp`/`tier` export and tiers. An Istio token floor
-   sits under it, and a default deny on every listener refuses everything a
-   route doesn't allow. A route-level policy never has an `authentication`
-   rule or a `when`. No security setting is a per-tenant value.
+1. **Only the allowlisted platform `EnvoyFilter`s, and no `WasmPlugin` or
+   `TrafficExtension`, in any rendered output** (ADR-0003, proposed): the
+   header removal and the rate limit filter. Each selects one tenant gateway,
+   matches only documented filter names, and has no Lua.
+1. **The security baseline is platform-rendered gateway policy** (ADR-0004,
+   proposed): the Istio token floor (`DENY` on `notRequestPrincipals`), a
+   default deny (an empty `ALLOW`), one closed allowed-API rule per API scoped
+   to its route, the claim headers and the tier rate limit. Tenants can't
+   write gateway policy (ADR-0008). No security setting is a per-tenant value.
+   Until the code owner decides ADR-0003, design §3–§5 still show the Kuadrant
+   form; don't build G.2 from them.
 1. **The allowed-API rule is derived and closed** (ADR-0006):
    `api.<tenant>.<api>`, exact or followed by `.`; never a typed pattern,
    never a wildcard.
@@ -124,7 +127,7 @@ with it on one list of refused kinds (story G.8); neither duplicates the other.
 
 ## Boundaries
 
-- Baseline: Service Mesh 3.4, Connectivity Link 1.4.1+, Gateway API v1.5.1,
+- Baseline: Service Mesh 3.4, Gateway API v1.5.1,
   Template Operator v2 ≥ 0.0.5. When one changes, update
   `docs/gateway-baseline.md` first, then the design.
 - Secrets by reference only. No token, client secret or private key in any

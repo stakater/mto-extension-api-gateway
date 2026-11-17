@@ -3,9 +3,10 @@
 The API Gateway extension for the
 [Multi-Tenant Operator](https://docs.stakater.com/mto/). Every `Tenant` can
 ask for its own API gateway on OpenShift — a Gateway API `Gateway` on Red Hat
-OpenShift Service Mesh 3 — with the platform's security baseline built in as
-Red Hat Connectivity Link policies: token check, allowed-API rule, caller
-headers set from the token, and rate limit tiers. A team asks for its gateway
+OpenShift Service Mesh 3 — with the platform's security baseline built in:
+token check, allowed-API rule, caller headers set from the token, and rate
+limit tiers. The checks are Istio policies plus two platform-owned, tested
+`EnvoyFilter`s (ADR-0003, proposed). A team asks for its gateway
 with one `TemplateInstance` that has no parameters, and publishes each API with
 a standard `HTTPRoute` and one annotation. There is no security switch to get
 wrong.
@@ -31,8 +32,7 @@ Two Helm charts, rendered per tenant by
 [Template Operator v2](https://docs.stakater.com/template-operator-v2/), in
 the shape of
 [mto-extension-vault-enterprise](https://github.com/stakater/mto-extension-vault-enterprise).
-No new operator, no custom resource: Gateway API, Istio and Connectivity Link
-objects only. See
+No new operator, no custom resource: Gateway API and Istio objects only. See
 [ADR-0001](docs/adr/0001-template-operator-renders-everything.md) and, for the
 part that makes it safe,
 [ADR-0004](docs/adr/0004-security-baseline-is-a-gateway-override.md).

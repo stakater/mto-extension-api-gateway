@@ -1,6 +1,12 @@
 # G.0 — Live spike
 
 Story: `docs/roadmap.md` G.0 (📝 Draft — needs 👍 Approved before starting).
+
+> **Pending decision (2026-11-17).** ADR-0003 now proposes Istio-native
+> policies plus two platform-owned, tested `EnvoyFilter`s instead of Kuadrant
+> (Connectivity Link) policies; ADR-0011 is rejected. This plan's Kuadrant checks (Q1, Q3, Q13–Q15) still
+> assume the Kuadrant form. It changes when the code owner decides; until
+> then, ADR-0003 and ADR-0004 describe the proposed form.
 Acceptance: none directly; it decides whether the AC-ISO, AC-AUTH and AC-RL
 scenarios are achievable as designed.
 
