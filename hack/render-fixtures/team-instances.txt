@@ -1,0 +1,10 @@
+# The team requests the tests render through the api-gateway Template:
+# <namespace> <name> <expected status>
+team-a-test edge ok
+team-a-dev api-gateway refused
+team-b-dev api-gateway ok
+team-b-dev bad.name refused
+team-core gw ok
+n1234 a ok
+n1234 b refused
+unlabelled api-gateway refused
