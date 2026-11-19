@@ -578,8 +578,10 @@ metadata:
 - One or more OIDC issuers (RHBK), each with tokens that carry the caller
   (`azp`), the allowed-APIs claim and the tier claim, with the same claim
   names. An external Keycloak that an API brings must be reachable from
-  Istio's control plane, which fetches its keys about every 20 minutes
-  (ADR-0004).
+  Istio's control plane, which fetches its keys (ADR-0004).
+- Istio's key reload interval set to **3 minutes** in the Service Mesh
+  control plane (`PILOT_JWT_PUB_KEY_REFRESH_INTERVAL=3m`; Istio's default is
+  20 minutes, M19). It is a mesh setting, not a value of this chart.
 - A Redis for the rate limit counters; its address and password secret are
   bootstrap values.
 - Access log providers, when teams may choose one, defined in the mesh
@@ -641,6 +643,12 @@ request.
   is not supported (G.9).
 - **Identity-provider roles are manual.** The platform creates
   `api.<tenant>.<api>` roles in RHBK (G.11).
+- **A realm change that makes new signing keys refuses tokens for a few
+  minutes.** A Keycloak realm that is imported again gets new keys. New tokens
+  fail until Istio reloads the keys (up to 3 minutes), and tokens signed with
+  the old key fail after that until callers get new ones (up to the token
+  life, 5 minutes today). A signing key that stays the same across realm
+  changes removes this (G.27).
 - **The gateway's pods run in the team's namespace** and count against the
   tenant's quota; admission keeps tenants from acting as the gateway
   (ADR-0008).

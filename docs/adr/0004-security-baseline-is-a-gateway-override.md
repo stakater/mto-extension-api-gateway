@@ -123,8 +123,13 @@ APIs.
   it changes only its tenant's gateway. G.19 measures whether open
   connections are closed (Q20).
 - An external Keycloak must be reachable from Istio's control plane, which
-  fetches its keys about every 20 minutes. When it can't be reached, its
-  tokens fail with `401`; the other issuers' tokens must keep working (Q19).
+  fetches its keys every 3 minutes (the mesh setting this platform uses;
+  Istio's default is 20, M19). When it can't be reached, its tokens fail with
+  `401`; the other issuers' tokens must keep working (Q19).
+- When an issuer gets new signing keys (for example a Keycloak realm imported
+  again), its tokens are refused for a few minutes until the keys are
+  reloaded and callers get new tokens. Stable signing keys remove this; that
+  is a later enhancement (G.27).
 - Every issuer must issue the same claims (`azp`, the allowed-APIs claim, the
   tier claim).
 - The guarantee depends on admission (ADR-0008) more than the Kuadrant form

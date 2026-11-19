@@ -68,7 +68,9 @@ the SNI a reencrypt and a passthrough `Route` send to a gateway with
 hostname-bound listeners (R4); a wildcard passthrough `Route` on a dedicated
 IngressController; one shared host split by path between two tenants'
 gateways with reencrypt `Route`s, `InterNamespaceAllowed`, the `entry`
-listener and the service CA certificate (R1–R3, Q17); the Service Mesh operator's `istio` GatewayClass, port
+listener and the service CA certificate (R1–R3, Q17); the Service Mesh control
+plane's key reload interval set to 3 minutes, and how long tokens are refused
+after an issuer's keys change (M19); the Service Mesh operator's `istio` GatewayClass, port
 mapping and `parametersRef`; the open questions in `gateway-baseline.md` that
 kind can't answer; evidence in `docs/spikes/g0-findings.md`; each ADR
 Accepted or superseded. Planning:
@@ -312,6 +314,13 @@ planning doc.
 **Story G.12 — A gateway of its own** 📝 *Draft* — opt-in: a second gateway for
 a tenant, for one API or one environment, chosen by the platform per tenant
 (ADR-0002).
+
+**Story G.27 — Stable issuer keys** 📝 *Draft* — no `401` when an issuer's
+realm changes: a signing key that stays the same across realm imports (the
+customer's realm chart already has a pinned-key option, switched off), key
+rotation by overlap (the new key first, the old key published until its
+tokens expire), and a live check that a realm import refuses no token. Until
+then, the mesh reloads keys every 3 minutes (M19, design §12).
 
 **Story G.14 — Observability per tenant** 📝 *Draft* — gateway access logs in
 the platform's JSON format, traces and metrics labelled with the tenant and the
