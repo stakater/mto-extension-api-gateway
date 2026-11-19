@@ -201,17 +201,21 @@ with `allowed_apis: [api.team-a.orders]` and no tier claim, and one with tier
 limit. Render: the tier descriptor defaults to `bronze`, and the service's
 configuration has a limit for a tier value it doesn't name.
 
-**AC-RL-3 — Counters are per tenant and caller.** *(L)* While `shop` is at its
-limit, `core` calling `a-orders` and a second `silver` client calling `orders`
-still get `200`.
+**AC-RL-3 — Counters are per tenant, API and caller.** *(L)* While `shop` is
+at its limit on `orders`, `shop` calling `payments` (another API of `team-a`
+on the same host), `core` calling `a-orders` and a second `silver` client
+calling `orders` still get `200`.
 
 **AC-RL-4 — No caller id, no entry.** *(L)* `anon` (no `azp`) is refused
 `orders` with `403`, so a token can't escape its counter; `shop` gets `200`.
 
-**AC-RL-5 — The platform can exempt a tenant.** *(R+L)* `bank` calling
-`billing` far past the `gold` limit never gets `429`; `team-b`'s gateway still
-has the rate limit filter (render), and its tenant is `unlimited` in the rate
-limit service's configuration.
+**AC-RL-5 — The platform can exempt a tenant or one API.** *(R+L)* `bank`
+calling `billing` far past the `gold` limit never gets `429`; `team-b`'s
+gateway still has the rate limit filter (render), and its tenant is
+`unlimited` in the rate limit service's configuration. With
+`rateLimit.unlimitedApis: [team-a.payments]`, `shop` calling `payments` far
+past its limit never gets `429`, and still gets `429` on `orders`. No team
+setting turns a limit off.
 
 **AC-RL-6 — A rate limiter outage follows the platform's choice.** *(L)* With
 the rate limit service scaled to zero, `shop` gets `200` when the platform

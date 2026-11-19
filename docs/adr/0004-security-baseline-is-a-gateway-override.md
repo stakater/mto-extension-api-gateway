@@ -3,7 +3,8 @@
 - **Status:** Proposed
 - **Date:** 2026-11-16 (mechanism changed on 2026-11-17 with ADR-0003: Istio
   policies instead of Kuadrant overrides; amended the same day after an
-  independent design review; issuers per tenant added on 2026-11-19)
+  independent design review; on 2026-11-19, issuers per tenant and the
+  rate limit exemption per API)
 
 ## Context
 
@@ -41,7 +42,7 @@ allowed-API claim of another tenant's API.
        platform-owned header filter removed any copy the caller sent
        (ADR-0003).
     1. **Rate limit:** the platform-owned rate limit filter; limits per tier,
-       counted per tenant and caller (ADR-0003).
+       counted per tenant, API and caller (ADR-0003).
 - `DENY` wins over `ALLOW` in Istio, so no `ALLOW` policy, from any source,
   can let in a request without a valid token from a trusted issuer.
 - **Issuers are platform values: one, many, or one per tenant.**
@@ -67,8 +68,9 @@ each is listed in the skipped-tenants ConfigMap.
   bootstrap chart values, set by the platform. A team's knobs (ADR-0012) can add claim
   headers; they can't remove a platform header or touch a check.
 - **One exception, set by the platform only:** the platform may exempt a
-  tenant from the rate limit (`unlimited`, per tenant in the bootstrap
-  values). The filter stays; only the limit changes.
+  whole tenant (`rateLimit.unlimitedTenants`) or one API
+  (`rateLimit.unlimitedApis`, `<tenant>.<api>`) from the rate limit. The
+  filter stays; only the limit changes. A team can't turn its own limit off.
 - **Tenants can't write gateway policy or act as the gateway.** Admission
   refuses a tenant's `RequestAuthentication`, `AuthorizationPolicy`,
   `Telemetry` or `EnvoyFilter` that targets or selects a tenant gateway, and a
@@ -120,3 +122,9 @@ each is listed in the skipped-tenants ConfigMap.
   policy would serve unprotected; the default deny closes that.
 - **Admission policies only.** Kept as a layer (ADR-0008), not as the
   baseline: admission checks objects, not requests.
+- **A rate limit exemption only per tenant (the version before 2026-11-19).**
+  Rejected: a tenant with several APIs may need one of them unlimited, as a
+  per-API gateway can be today.
+- **A switch that a team sets on its `api` instance, honoured only for
+  tenants the platform allows.** Rejected: the rate limit protects backends
+  and is part of the baseline, so the platform decides each exemption.

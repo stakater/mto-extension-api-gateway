@@ -107,23 +107,40 @@ are the ones we see in practice):
 domain: mto-api-gateway
 descriptors:
   - key: tenant
-    value: team-b                 # exempted by the platform (ADR-0004)
+    value: team-b                 # a tenant exempted by the platform (ADR-0004)
     descriptors:
-      - key: tier
+      - key: api
         descriptors:
-          - key: azp
-            rate_limit: { unlimited: true }
+          - key: tier
+            descriptors: [{ key: azp, rate_limit: { unlimited: true } }]
   - key: tenant
+    value: team-a                 # a tenant with one exempted API, team-a.reports
     descriptors:
-      - key: tier
-        value: gold
-        descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 100 } }]
-      - key: tier
-        value: silver
-        descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 50 } }]
-      - key: tier               # bronze, and any tier the platform doesn't name
-        descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 10 } }]
+      - key: api
+        value: reports
+        descriptors:
+          - key: tier
+            descriptors: [{ key: azp, rate_limit: { unlimited: true } }]
+      - key: api                  # team-a's other APIs: the tiers, as below
+        descriptors: [ ...the tier entries below... ]
+  - key: tenant                   # every other tenant
+    descriptors:
+      - key: api                  # each API value gets its own counters
+        descriptors:
+          - key: tier
+            value: gold
+            descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 100 } }]
+          - key: tier
+            value: silver
+            descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 50 } }]
+          - key: tier             # bronze, and any tier the platform doesn't name
+            descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 10 } }]
 ```
+
+A counter is kept for each tenant, API, tier and caller, so a caller's calls
+to one API never use up its limit on another. The service matches a tenant's
+own entry before the generic one and never falls back, so a tenant with an
+exempted API gets the full tier tree under its own entry (M18).
 
 ### 3.2 Per request, in the request's namespace (`api-gateway` Template)
 
@@ -170,7 +187,7 @@ spec:
 |---|---|---|
 | `RequestAuthentication` | `api-gateway-jwt` | targets the `Gateway`: one rule per issuer of the tenant, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
 | `EnvoyFilter` | `api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
-| `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name: `tenant`, `tier` (default `bronze`), `azp` (M14) |
+| `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (default `bronze`), `azp` (M18) |
 | `EnvoyFilter` | `api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
 | `Telemetry` | `api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers |
 | `ConfigMap` | `api-gateway-apis` | the tenant's APIs, routes that are not APIs, conflicts, refused knobs (§7) |
@@ -257,9 +274,17 @@ spec:
       patch:
         operation: MERGE
         value:
-          rate_limits:
+          rate_limits:                # one entry per API of team-a
             - actions:
                 - generic_key: { descriptor_key: tenant, descriptor_value: team-a }
+                - header_value_match:   # no match: this entry gives no descriptor (M18)
+                    descriptor_key: api
+                    descriptor_value: orders
+                    headers:
+                      - name: ":authority"
+                        string_match: { safe_regex: { regex: "^orders\\.team-a\\.apis\\.example\\.com(:[0-9]+)?$" } }
+                      - name: ":path"
+                        string_match: { safe_regex: { regex: "^/orders/v2([/?].*)?$" } }
                 - metadata:
                     descriptor_key: tier
                     default_value: bronze
@@ -408,7 +433,7 @@ Every request on a tenant gateway passes, in order:
    mapped claim are present. Otherwise the default deny: `403`.
 1. **Headers:** `x-sub`, `x-roles` and the team's extras set from the token.
 1. **Rate limit** (platform filter): the caller's tier limit, counted per
-   tenant and caller. Otherwise `429`.
+   tenant, API and caller. Otherwise `429`.
 1. **Backend lock** (mesh): on the API's ports, the backend refuses every
    identity but the tenant gateway's, and every caller outside the mesh.
 

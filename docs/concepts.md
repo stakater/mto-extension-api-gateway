@@ -21,7 +21,7 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 | **Allowed-APIs claim** | the caller's token (RHBK) | A token claim that lists the APIs a caller may use, for example `allowed_apis: [api.team-a.orders]`. The platform names the claim. |
 | **Tier** | a token claim, platform values | `bronze`, `silver`, `gold`: the caller's request rate on every API. The platform sets the rates. |
 | **Backend lock** | Istio `AuthorizationPolicy` in the API's namespace | "Only the tenant gateway may call this backend." Rendered for every API. Another pod in the cluster is refused. |
-| **Rate limit service** | the platform namespace | Counts calls per tenant, caller and tier for every tenant gateway, with Redis. Deployed by the bootstrap chart; tiers are platform values. |
+| **Rate limit service** | the platform namespace | Counts calls per tenant, API, caller and tier for every tenant gateway, with Redis, so each API has its own limit. Deployed by the bootstrap chart; tiers are platform values. |
 | **Template Operator** | Stakater | Renders the team's gateway request, each `api` instance, and one policy child per tenant. |
 | **Bootstrap chart** | this repo | Installed once per cluster. Publishes the `api-gateway` and `api` Templates, renders the token floor, the default deny, the rate limit service and the admission policy, and fans out one policy child per tenant. |
 | **Policy child** | a `TemplateInstance` per tenant, in the platform namespace | Renders the tenant gateway's `RequestAuthentication`, filters and telemetry, and, for every API's route, its allowed-API rule and backend lock (ADR-0013). Never created by hand. |

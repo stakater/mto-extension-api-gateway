@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-11-16 (rewritten on 2026-11-17; the first version chose
   Kuadrant policies, see Alternatives; amended the same day after an
-  independent design review)
+  independent design review; on 2026-11-19 the rate limit counts per API)
 
 ## Context
 
@@ -109,12 +109,14 @@ two services, mostly for features that are not required.
   and their underscore variants, before `jwt_authn` runs.
 - **Rate limit: EnvoyFilter 2.** Envoy's rate limit filter before `router`,
   and rate limit actions at the virtual-host level, with no virtual-host or
-  port name to match. Descriptors: `tenant`, then `tier` (default `bronze`),
-  then `azp`, read from the validated token. The rate limit service is
+  port name to match: one entry per API, matched on the API's host and path
+  (M18). Descriptors: `tenant`, `api`, then `tier` (default `bronze`) and
+  `azp`, read from the validated token. Each API counts separately, as the
+  per-API gateways do today. The rate limit service is
   deployed by the bootstrap chart and reached through Istio's documented
-  outbound cluster name (`outbound|<port>||<host>`). A tenant the platform
-  exempts gets `unlimited` in the service's configuration, so the filter
-  stays (ADR-0004).
+  outbound cluster name (`outbound|<port>||<host>`). A tenant or an API the
+  platform exempts gets `unlimited` in the service's configuration, so the
+  filter stays (ADR-0004).
 - **Correlation ID: EnvoyFilter 3,** only when the team turns it on
   (ADR-0012): the route configuration adds the platform's correlation header
   from `x-request-id` when the caller sent none.
@@ -150,7 +152,8 @@ two services, mostly for features that are not required.
   on three things: the floor and the default deny live in the root namespace;
   the platform renders every other gateway policy; and admission refuses a
   tenant's gateway policy, filter or gateway identity (ADR-0008).
-- The rate limit counts per tenant, caller and tier, not per API.
+- The rate limit counts per tenant, API, tier and caller. The child re-renders
+  the rate limit filter when an API is added or removed.
 - Whether the rate limit fails open or closed when its service is down is a
   platform value, documented as a limit.
 - A list claim in `x-roles` arrives base64-encoded JSON; backends decode it.
@@ -176,5 +179,9 @@ two services, mostly for features that are not required.
   protection would depend on the order and success of every apply.
 - **Istio-native only, no rate limit.** Rejected: the rate limit is a
   requirement.
+- **One rate limit counter per tenant, tier and caller, for all of a tenant's
+  APIs (the version before 2026-11-19).** Rejected: today each API counts
+  separately, so a caller of two APIs would get `429` sooner after a move, a
+  change that callers of production APIs would see.
 - **A separate API management product.** Rejected: out of scope (vision,
   non-goals).

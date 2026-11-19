@@ -130,7 +130,8 @@ rules:
 - Several tenants share one front-door host when the platform grants each
   its path prefixes there (ADR-0009). An API on that host needs a path under
   its tenant's prefixes.
-- The rate limit can't count per API by host. It needs the API name.
+- The rate limit counts per API: the child renders one rate limit entry per
+  API, matched on its host and path, like the API rule (ADR-0003).
 - Teams that keep routes in Git keep their `api` instances there instead.
 - The route name `api.<api>` is a name teams don't use. G.19 tests that a
   render refuses a taken name (T4).

@@ -44,7 +44,7 @@ in `docs/spikes/g19-kind-findings.md` on Istio 1.27.9 and 1.30.8 for: root
 namespace `selector` policies combined with `targetRefs` policies on a
 gateway; the empty `ALLOW` denying and `rules: [{}]` allowing; claim headers
 overwritten and caller copies removed, `x_sub` included; virtual-host rate
-limit actions with no name (M14), a missing `azp` and an unknown tier; a token of another tenant's issuer (M17, Q18); the
+limit actions with no name (M14) and one entry per API (M18), a missing `azp` and an unknown tier; a token of another tenant's issuer (M17, Q18); the
 gateway's HBONE identity at a locked backend; Template Operator's empty LIST
 and missing-key behaviour (T6, T7); the default Service type of a gateway
 (M13); that an `AuthorizationPolicy` scoped by host and path keeps two APIs
@@ -231,10 +231,11 @@ every API, so that no caller uses more than its share of a tenant's gateway.
 
 Done: the bootstrap chart deploys the rate limit service with its tier
 configuration from bootstrap values (Redis address and secret as values); the
-child renders the rate limit `EnvoyFilter` (descriptors `tenant`, `tier`
-defaulting to `bronze`, `azp`); per-tenant `unlimited` and the failure mode as
-platform values; live: `429` at the limit, per caller, a missing or unknown
-tier at `bronze`, an exempt tenant unlimited. Satisfies **AC-RL-1**,
+child renders the rate limit `EnvoyFilter` (one entry per API, matched on
+its host and path; descriptors `tenant`, `api`, `tier` defaulting to `bronze`,
+`azp`); `unlimited` per tenant and per API, and the failure mode, as platform
+values; live: `429` at the limit, per API and caller, a missing or unknown
+tier at `bronze`, an exempt tenant and an exempt API unlimited. Satisfies **AC-RL-1**,
 **AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**.
 
 **Story G.25 — Team settings on the gateway request** 📝 *Draft*

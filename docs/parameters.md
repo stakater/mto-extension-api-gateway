@@ -104,6 +104,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `rateLimit.failureModeAllow` | to decide in G.5 | whether calls pass when the rate limit service is down; documented as a limit (ADR-0003) | G.5 |
 | `rateLimit.redis.address`, `rateLimit.redis.passwordSecret` | none, required with the rate limit | the platform's Redis for the counters | G.5 |
 | `rateLimit.unlimitedTenants` | `[]` | tenants the platform exempts from the rate limit; their filter stays (ADR-0004) | G.5 |
+| `rateLimit.unlimitedApis` | `[]` | single APIs the platform exempts, as `<tenant>.<api>`; the tenant's other APIs keep their limits (ADR-0004) | G.5 |
 | `istio.rootNamespace` | `istio-system` | where the token floor and default deny live | G.2 |
 | `istio.trustDomain` | `cluster.local` | the trust domain in the gateway's principal for the backend lock | G.4 |
 | `headers.reserved` | the platform's list | header names a team can't map a claim to, always removed from callers | G.2, G.25 |
@@ -119,7 +120,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 
 No platform value is a switch for the token check, the header replacement or
 the backend lock. The rate limit has one platform-only exception per tenant
-(`rateLimit.unlimitedTenants`). No team annotation names a security setting
+(`rateLimit.unlimitedTenants`, `rateLimit.unlimitedApis`). No team annotation names a security setting
 (AC-R-3).
 
 ## 3. The team's inputs
@@ -170,8 +171,8 @@ Lua (ADR-0003, ADR-0004).
 ## 6. Open
 
 - **Per-tenant platform values.** `gateway.extraHostnames`, the prefixes in
-  `gateway.sharedHosts`, `auth.tenantIssuers` and `rateLimit.unlimitedTenants`
-  are per tenant. A per-tenant autoscaling range
+  `gateway.sharedHosts`, `auth.tenantIssuers`, `rateLimit.unlimitedTenants` and
+  `rateLimit.unlimitedApis` are per tenant. A per-tenant autoscaling range
   or tier set is not designed. Add it when a tenant needs it, as a platform
   value, never as a team input.
 - **The internal host name.** Today an API has a second, internal host. G.18
