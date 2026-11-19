@@ -50,13 +50,14 @@ the golden only after an intended change: `make golden`.
    per-API `ALLOW`s and the backend locks. Tenants can't write gateway policy
    or act as the gateway (ADR-0008). No security setting is a per-tenant
    value, except two platform values: the tenant's issuers and the rate-limit
-   exemption (a whole tenant or one API). An issuer run by one tenant is never trusted for another.
+   exemption (a whole tenant or one API). The one team switch is an API's
+   own rate limit (`rateLimit: "off"`), which the platform can lock. An issuer run by one tenant is never trusted for another.
 1. **An API is an `api` `TemplateInstance`, and its rule checks the host and
    the path** (ADR-0005): the team never writes a route; the template checks
    the parameters, and admission refuses `valueFrom`. The per-API `ALLOW`
    names the route's host and its path (`<path>`, `<path>/*`) or exact
    operations, requires `azp` and every mapped claim, and accepts only the
-   tenant's issuers. APIs on one host whose paths overlap fail closed.
+   API's issuers. APIs on one host whose paths overlap fail closed.
 1. **Gateway settings are validated annotations, never parameters** (ADR-0012):
    unknown or refused keys are listed; a claim header never replaces
    `x-sub` or `x-roles`, and never maps to a reserved header.

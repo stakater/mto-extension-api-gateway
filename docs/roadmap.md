@@ -44,7 +44,9 @@ in `docs/spikes/g19-kind-findings.md` on Istio 1.27.9 and 1.30.8 for: root
 namespace `selector` policies combined with `targetRefs` policies on a
 gateway; the empty `ALLOW` denying and `rules: [{}]` allowing; claim headers
 overwritten and caller copies removed, `x_sub` included; virtual-host rate
-limit actions with no name (M14) and one entry per API (M18), a missing `azp` and an unknown tier; a token of another tenant's issuer (M17, Q18); the
+limit actions with no name (M14) and one entry per API (M18), a missing `azp` and an unknown tier; a token of another tenant's issuer (M17, Q18); an unreachable issuer's keys
+while the other issuers keep working (Q19); a root-namespace policy change and
+open connections (Q20); the
 gateway's HBONE identity at a locked backend; Template Operator's empty LIST
 and missing-key behaviour (T6, T7); the default Service type of a gateway
 (M13); that an `AuthorizationPolicy` scoped by host and path keeps two APIs
@@ -151,7 +153,9 @@ refuses an unknown name, a duplicate URL, and a tenant-run issuer used by
 another tenant, and skips a tenant with no issuer; render checks for one,
 two and per-tenant issuers; live on the kind lab with two lab issuers: each
 tenant accepts its own tokens and refuses the other's, also with a forged
-claim for its API. Satisfies **AC-AUTH-10**, **AC-R-2**.
+claim for its API; an API that names its tenant's registered issuer in
+`issuers` is the only one that trusts it; adding an issuer restarts no pod.
+Satisfies **AC-AUTH-10**, **AC-AUTH-11**, **AC-AUTH-12**, **AC-R-2**.
 
 **Story G.8 — Admission, before any API is served** 📝 *Draft*
 
@@ -233,10 +237,11 @@ Done: the bootstrap chart deploys the rate limit service with its tier
 configuration from bootstrap values (Redis address and secret as values); the
 child renders the rate limit `EnvoyFilter` (one entry per API, matched on
 its host and path; descriptors `tenant`, `api`, `tier` defaulting to `bronze`,
-`azp`); `unlimited` per tenant and per API, and the failure mode, as platform
-values; live: `429` at the limit, per API and caller, a missing or unknown
-tier at `bronze`, an exempt tenant and an exempt API unlimited. Satisfies **AC-RL-1**,
-**AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**.
+`azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`
+per tenant and per API, and the failure mode as platform values; live: `429` at the limit, per API and caller, a missing or unknown
+tier at `bronze`, an exempt tenant and an exempt API unlimited; a change of
+the tiers reaches the service without a pod restart. Satisfies **AC-RL-1**,
+**AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**, **AC-RL-7**.
 
 **Story G.25 — Team settings on the gateway request** 📝 *Draft*
 

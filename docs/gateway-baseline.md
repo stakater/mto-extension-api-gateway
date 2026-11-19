@@ -115,3 +115,5 @@ the Istio form as written in M10 and M11.
 | Q16 | With two APIs on one host split by path, does each caller reach only its own API: with `//`, `/./`, `/../`, `%2F`, a query string, a path that differs only in case, and a path rewrite on the route? | ADR-0005, AC-AUTH-8 |
 | Q17 | On OpenShift, does a reencrypt `Route` send SNI to the gateway? Do reencrypt `Route`s for one host, in two tenants' gateway namespaces with `InterNamespaceAllowed`, send each path prefix to its own gateway's `entry` listener, with the service CA certificate? | ADR-0009, G.18 |
 | Q18 | With two trusted issuers, is a valid token from issuer B, carrying any claim, refused on a gateway whose `RequestAuthentication` names only issuer A, and with which status? | ADR-0004, AC-AUTH-10 |
+| Q19 | When Istio can't fetch one issuer's keys (an external Keycloak is down or blocked), are tokens of the gateway's other issuers still validated, and are that issuer's tokens refused with `401`? | ADR-0004, AC-AUTH-11 |
+| Q20 | When an `AuthorizationPolicy` in the root namespace changes, does every gateway apply it live, and are open client connections closed or kept? | ADR-0004, AC-AUTH-12 |

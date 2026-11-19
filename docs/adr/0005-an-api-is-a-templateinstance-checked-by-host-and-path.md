@@ -67,6 +67,8 @@ spec:
 | `service` | yes | — | a DNS label: a `Service` in the instance's namespace |
 | `port` | yes | — | 1 to 65535 |
 | `operations` | no | every path under `path` | `METHOD /exact/path`, comma-separated, at most 10; each path under `path`; methods `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` |
+| `issuers` | no | the tenant's default issuers | names of issuers the platform registered, comma-separated: from `defaultIssuers`, the tenant's `tenantIssuers`, or registered for the tenant (ADR-0004) |
+| `rateLimit` | no | `"on"` | `"on"` or `"off"`; `"off"` is refused in a tenant the platform locks (ADR-0004) |
 
 - **The instance renders the route.** In its namespace, with `sync: strict`,
   it renders the `HTTPRoute` `api.<api>`: `parentRefs` to the tenant's

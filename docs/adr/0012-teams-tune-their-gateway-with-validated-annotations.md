@@ -15,7 +15,7 @@ beyond their routes:
 | Claim → header mapping | one team: `client_id` → its own header name, instead of `azp` → `x-sub` | the backend's contract for who called |
 | Correlation ID | some on, some off | a header that ties log lines of one call together |
 | Access log and traces | one team: its own log format and two extra trace headers | the team's own observability |
-| Rate limit | one team off | covered by the platform's per-tenant exemption (ADR-0004), not by a team setting |
+| Rate limit | one team off | the team's switch on each `api` instance (ADR-0004), not a gateway knob; not by a team setting |
 
 No team changed scaling or public paths. Other differences (an external
 backend, a legacy issuer, no backend lock, one public host split by path) are
@@ -49,8 +49,9 @@ pattern validation, and an undeclared parameter fails the instance.
   stay. Every mapped claim is required in the API rule, so the header is
   always written from the token, and the header filter removes the caller's
   copy of every mapped name (ADR-0003).
-- **Security, hostnames, scaling and rate limits are not knobs.** They stay
-  platform values (ADR-0004, ADR-0009).
+- **Security, hostnames, scaling and rate limits are not gateway knobs.** They
+  stay platform values (ADR-0004, ADR-0009); a team turns one API's rate limit
+  off with that API's `rateLimit` parameter (ADR-0004).
 
 ## Consequences
 

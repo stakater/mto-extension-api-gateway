@@ -100,11 +100,12 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `auth.issuers.<name>.jwksUri` | empty | the key set's URL (`RequestAuthentication` `jwksUri`), when the issuer's host is not reachable from the cluster; the issuer still pins `iss` | G.2 |
 | `auth.issuers.<name>.tenant` | empty | the tenant that runs this issuer; it may then be used only by that tenant | G.2 |
 | `auth.defaultIssuers` | none, required unless every tenant has a list | the issuers of every tenant without its own list: one or many | G.2 |
-| `auth.tenantIssuers` | `{}` | **per tenant**: its issuers, instead of the default | G.2 |
+| `auth.tenantIssuers` | `{}` | **per tenant**: its default issuers, instead of `defaultIssuers`; an API may also name issuers registered with `tenant: <its tenant>` (ADR-0004) | G.13 |
 | `rateLimit.failureModeAllow` | to decide in G.5 | whether calls pass when the rate limit service is down; documented as a limit (ADR-0003) | G.5 |
 | `rateLimit.redis.address`, `rateLimit.redis.passwordSecret` | none, required with the rate limit | the platform's Redis for the counters | G.5 |
 | `rateLimit.unlimitedTenants` | `[]` | tenants the platform exempts from the rate limit; their filter stays (ADR-0004) | G.5 |
 | `rateLimit.unlimitedApis` | `[]` | single APIs the platform exempts, as `<tenant>.<api>`; the tenant's other APIs keep their limits (ADR-0004) | G.5 |
+| `rateLimit.lockedTenants` | `[]` | tenants whose teams may not turn an API's limit off; their `rateLimit: "off"` is refused (ADR-0004) | G.5 |
 | `istio.rootNamespace` | `istio-system` | where the token floor and default deny live | G.2 |
 | `istio.trustDomain` | `cluster.local` | the trust domain in the gateway's principal for the backend lock | G.4 |
 | `headers.reserved` | the platform's list | header names a team can't map a claim to, always removed from callers | G.2, G.25 |
@@ -119,8 +120,10 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `rateLimit.defaultTier` | `bronze` | the catch-all for a missing or unknown tier; never "no limit" | G.5 |
 
 No platform value is a switch for the token check, the header replacement or
-the backend lock. The rate limit has one platform-only exception per tenant
-(`rateLimit.unlimitedTenants`, `rateLimit.unlimitedApis`). No team annotation names a security setting
+the backend lock. The rate limit can be turned off: by the team for its API
+(the `api` instance's `rateLimit: "off"`, unless the tenant is in
+`rateLimit.lockedTenants`), or by the platform (`rateLimit.unlimitedTenants`,
+`rateLimit.unlimitedApis`). No team annotation names a security setting
 (AC-R-3).
 
 ## 3. The team's inputs
@@ -130,7 +133,7 @@ the backend lock. The rate limit has one platform-only exception per tenant
 | the gateway request | a `TemplateInstance` of `api-gateway`: its namespace and name, no parameters | `api-gateway` in `team-a-dev` |
 | team settings | annotations `api-gateway.stakater.com/*` on the request: `claim-headers`, `correlation-id`, `access-log`, `trace-headers`; validated, refused keys listed (ADR-0012) | `claim-headers: client_id=x-client` |
 | the API | a `TemplateInstance` of `api` in the backend's namespace; its name is the API name, a DNS label unique in the tenant (ADR-0005) | `orders` in `team-a-dev` |
-| host, path, rewrite, backend, operations | the `api` instance's parameters `host` (default `<api>.<tenant>.<base domain>`), `path`, `rewrite`, `service`, `port`, `operations`; checked by the template; APIs share a host by path (ADR-0005) | `orders.team-a.apis.example.com`, `/orders/v2` → `/orders/v1`, Service `orders` port 80 |
+| host, path, rewrite, backend, operations | the `api` instance's parameters `host` (default `<api>.<tenant>.<base domain>`), `path`, `rewrite`, `service`, `port`, `operations`, `issuers`, `rateLimit`; checked by the template; APIs share a host by path (ADR-0005) | `orders.team-a.apis.example.com`, `/orders/v2` → `/orders/v1`, Service `orders` port 80 |
 
 The first proposal's six parameters map like this:
 

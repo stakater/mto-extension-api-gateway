@@ -189,6 +189,21 @@ or in `team-a`'s list is refused by the parent and listed; the floor lists
 both issuers; `team-a`'s `RequestAuthentication` and API rules name only
 `shared`.
 
+**AC-AUTH-11 — An API's own Keycloak reaches only that API.** *(R+L)* The
+platform registers `partner-kc` for `team-a`, and `orders` names it in
+`issuers`. A `partner-kc` token with `api.team-a.orders` gets `200` on
+`orders`; a `partner-kc` token that claims `api.team-a.payments` gets `403` on
+`payments`; on `team-b`'s gateway it gets `401`. An `api` instance of `team-b`
+that names `partner-kc` is `refused`. With `partner-kc` unreachable, its
+tokens get `401` on `orders`, and `shared` tokens still get `200` on
+`payments` (Q19).
+
+**AC-AUTH-12 — Registering an issuer restarts nothing.** *(L)* While a client
+calls `orders` once per second over one kept-open connection, the platform
+registers a new issuer and an API starts to use it: no gateway, rate limit or
+backend pod restarts, and the client sees no `5xx`; whether the connection is
+closed and reopened is recorded (Q20).
+
 ## Rate limits
 
 **AC-RL-1 — The tier limit holds.** *(L)* `shop` (`silver`) calling `orders`
@@ -216,6 +231,13 @@ gateway still has the rate limit filter (render), and its tenant is
 `rateLimit.unlimitedApis: [team-a.payments]`, `shop` calling `payments` far
 past its limit never gets `429`, and still gets `429` on `orders`. No team
 setting turns a limit off.
+
+**AC-RL-7 — A team turns its API's limit off, unless the platform locks it.**
+*(R+L)* With `rateLimit: "off"` on `reports`, `shop` calling `reports` far past
+its limit never gets `429`, and still gets `429` on `orders`; the rate limit
+filter stays, `reports` has no rate limit entry, and the tenant's status lists
+it as off. With `team-a` in `rateLimit.lockedTenants`, the same parameter is
+refused with the reason in `api.reports`, and `reports` keeps its limit.
 
 **AC-RL-6 — A rate limiter outage follows the platform's choice.** *(L)* With
 the rate limit service scaled to zero, `shop` gets `200` when the platform
@@ -258,7 +280,8 @@ test).
 **AC-R-3 — No security switch reaches a tenant.** *(R)* No team annotation
 names the issuer, the audience, the allowed-APIs claim, the tiers, the rate
 limit or the backend lock; such an annotation is listed as an unknown key and
-changes nothing in the render.
+changes nothing in the render. The one team switch is an API's own rate limit
+(AC-RL-7).
 
 **AC-R-4 — Allowed-API rules are derived and closed.** *(R)* Every per-API
 condition is exactly `api.<tenant>.<api>` and `api.<tenant>.<api>.*`; a
@@ -272,7 +295,7 @@ granted extra hostname); no listener has `from: All`.
 **AC-R-6 — Per-API rules are scoped to their API's host and path.** *(R)*
 Every per-API `ALLOW` names only its route's host, and its path as `<path>`
 and `<path>/*` or its exact operations, requires `azp` and every mapped claim,
-and accepts only its tenant's issuers; no per-API `ALLOW` has no hosts, and
+and accepts only its API's issuers; no per-API `ALLOW` has no hosts, and
 only an API on `/` has no paths. A fixture that drops the hosts, the paths or
 the `azp` condition fails.
 

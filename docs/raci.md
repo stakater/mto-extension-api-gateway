@@ -57,7 +57,7 @@ mesh labels come from the `Tenant`.
 | **The per-tenant gateway and its security baseline** (token check, allowed-API rule, header handling, rate limit, deny-by-default) | R, A | I | **moves to platform** (switches in each team's values today) |
 | **Autoscaling the gateway** (HPA, PDB) | R, A | I | **new** — fixed replica counts per API today (ADR-0002) |
 | **Upgrading every gateway** | R, A | I | **moves to platform** (each team, by hand, today) |
-| Publish an API (a `TemplateInstance` of `api`) | C | R, A | **changed** — a copied values file becomes one `TemplateInstance` with six checked parameters (ADR-0005) |
+| Publish an API (a `TemplateInstance` of `api`) | C | R, A | **changed** — a copied values file becomes one `TemplateInstance` with eight checked parameters (ADR-0005) |
 | Change an API (host, path, backend, route rules) | I | R, A | same |
 | Deploy and run the application | I | R, A | same |
 | First-line troubleshooting (`401`/`403`/`429`, routing) | C | R, A | same |

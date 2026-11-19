@@ -94,7 +94,7 @@ two services, mostly for features that are not required.
   `"<issuer>/*"` per trusted issuer, and an `ALLOW` with no rules. They exist before any gateway,
   so no apply order opens a window (ADR-0004).
 - **Token check:** a `RequestAuthentication` on each tenant gateway: the
-  tenant's issuers (ADR-0004), audiences, optional `jwksUri`, token read only from the
+  issuers that the tenant and its APIs use (ADR-0004), audiences, optional `jwksUri`, token read only from the
   `Authorization` header (`fromHeaders`).
 - **Allowed-API rule:** one `AuthorizationPolicy` `ALLOW` per API, in the
   gateway's namespace, targeting the `Gateway`: `to.operation.hosts` = the API

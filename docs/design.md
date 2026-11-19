@@ -33,7 +33,7 @@ One Helm chart, rendered once per cluster, and Template Operator v2 objects
 | `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm, in the platform's namespace `mto-api-gateways` | the parent `Template` and `TemplateInstance`, the child Template `api-gateway-policy`, the token floor and default deny in the Istio root namespace (ADR-0004), the rate limit service (ADR-0003), the admission policy (ADR-0008) |
 | The parent `TemplateInstance` | by the chart | the team-facing **`api-gateway` and `api` Templates**, the skipped-tenants ConfigMap, and **one child `TemplateInstance` per tenant that has a gateway** (ADR-0013) |
 | A `TemplateInstance` of `api-gateway` | by the team, in the tenant namespace where its gateway should run; no parameters; optional knob annotations (ADR-0012) | **in its own namespace**: `Gateway` `<request>`, its settings ConfigMap, its certificates, and the request's status ConfigMap |
-| A `TemplateInstance` of `api` | by the team, one per API, in the backend's namespace; six checked parameters (ADR-0005) | **in its own namespace**: the API's `HTTPRoute` `api.<api>` and its status ConfigMap `api.<api>` |
+| A `TemplateInstance` of `api` | by the team, one per API, in the backend's namespace; eight checked parameters (ADR-0005) | **in its own namespace**: the API's `HTTPRoute` `api.<api>` and its status ConfigMap `api.<api>` |
 | A tenant's child `TemplateInstance` | by the parent, in `mto-api-gateways` | the tenant's gateway policy: `RequestAuthentication`, the platform's `EnvoyFilter`s, `Telemetry`; **per API route** the allowed-API rule (in the gateway's namespace) and the backend lock (in the route's namespace); the tenant's status ConfigMap `<request>-apis` |
 
 **How the request stays trusted.** A team writes only the `TemplateInstance`'s
@@ -51,7 +51,7 @@ namespace, name and annotations. Every parameter of `api-gateway` is a
 The annotations are read by the tenant's child, not by the team render, and
 validated there (ADR-0012). The `api` Template gets the same platform
 parameters, plus each tenant's gateway and hostnames, all `disableOverride`.
-A team sets only an API's six parameters, which the template checks;
+A team sets only an API's eight parameters, which the template checks;
 admission refuses `valueFrom` on both Templates' instances (ADR-0005, T9).
 `api-gateway`, `api` and `api-gateway-policy` sync `strict`: Template
 Operator's admission webhook refuses a team's edit or delete of anything
@@ -77,7 +77,7 @@ platform may also trust several issuers, or give a tenant its own
 |---|---|---|
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-token-floor` | `DENY` for every request without a valid token from one of the platform's issuers (`auth.issuers`), on every pod with the gateway label (M6, M12) |
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-default-deny` | `ALLOW` with no rules on the same pods: whatever no API rule allows is refused (M12) |
-| `Deployment`, `Service`, `ConfigMap` | `ratelimit` in `mto-api-gateways` | the rate limit service (Envoy's rate limit API) with its tier configuration from bootstrap values; Redis address and secret are values (ADR-0003) |
+| `Deployment`, `Service`, `ConfigMap` | `ratelimit` in `mto-api-gateways` | the rate limit service (Envoy's rate limit API) with its tier configuration from bootstrap values; Redis address and secret are values (ADR-0003); it reloads a changed configuration file itself, so the chart puts no checksum annotation on its pods and a configuration change restarts nothing |
 | `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-tenants` | what tenant users may not do to a gateway (ADR-0008) |
 
 ```yaml
@@ -137,6 +137,10 @@ descriptors:
             descriptors: [{ key: azp, rate_limit: { unit: second, requests_per_unit: 10 } }]
 ```
 
+An API whose limit is off (its team's `rateLimit: "off"`, or the platform's
+exemption) gets no rate limit entry in the filter, so no counter at all; the
+tenant's status lists it.
+
 A counter is kept for each tenant, API, tier and caller, so a caller's calls
 to one API never use up its limit on another. The service matches a tenant's
 own entry before the generic one and never falls back, so a tenant with an
@@ -185,7 +189,7 @@ spec:
 
 | Kind | Name | What it does |
 |---|---|---|
-| `RequestAuthentication` | `api-gateway-jwt` | targets the `Gateway`: one rule per issuer of the tenant, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
+| `RequestAuthentication` | `api-gateway-jwt` | targets the `Gateway`: one rule per issuer that the tenant or one of its APIs uses, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
 | `EnvoyFilter` | `api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
 | `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (default `bronze`), `azp` (M18) |
 | `EnvoyFilter` | `api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
@@ -198,7 +202,7 @@ kind: RequestAuthentication
 metadata: { name: api-gateway-jwt, namespace: team-a-dev }
 spec:
   targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }]
-  jwtRules:                                   # one per issuer of team-a
+  jwtRules:                                   # one per issuer that team-a or its APIs use
     - issuer: https://sso.example.com/realms/apis
       audiences: [apis]
       fromHeaders: [{ name: Authorization, prefix: "Bearer " }]
@@ -332,6 +336,8 @@ spec:
 | `rewrite` | no | as `path`; not with `operations` |
 | `service`, `port` | yes | a `Service` name (DNS label) in the instance's namespace; a port 1–65535 |
 | `operations` | no | `METHOD /exact/path`, comma-separated, at most 10; each path under `path` |
+| `issuers` | no | issuers the platform registered for this API's use, by name; default: the tenant's (ADR-0004) |
+| `rateLimit` | no | `"on"` (default) or `"off"`; `"off"` refused when the platform locks the tenant (ADR-0004) |
 
 It renders, in `team-a-dev`, the `HTTPRoute` and the ConfigMap `api.orders`
 (`status: ok` with the URL and the rule, or `status: refused` with the
@@ -363,7 +369,7 @@ For the API `orders` (the route `api.orders` in `team-a-dev`, host
 
 | Kind | Namespace | Name | What it does |
 |---|---|---|---|
-| `AuthorizationPolicy` `ALLOW` | the gateway's (`team-a-dev`) | `api.orders` | targets the `Gateway`; the route's host and path (or exact operations); the closed rule `api.team-a.orders` (ADR-0006); `azp` and every mapped claim required; the tenant's issuers only |
+| `AuthorizationPolicy` `ALLOW` | the gateway's (`team-a-dev`) | `api.orders` | targets the `Gateway`; the route's host and path (or exact operations); the closed rule `api.team-a.orders` (ADR-0006); `azp` and every mapped claim required; the API's issuers only (ADR-0004) |
 | `AuthorizationPolicy` `DENY` | the route's | `api.orders.<service>` | one per backend Service: L4 `DENY` on the target ports from every identity but `api-gateway-istio` (ADR-0007) |
 
 The allowed-API rule is rendered **only when every backend can be locked** and
@@ -532,7 +538,8 @@ tenant gets the conflicting prefix. Refusals are listed under
 ## 8. Team settings (ADR-0012)
 
 A team sets these as annotations on its gateway request; the child validates
-them and lists each refused or unknown key:
+them and lists each refused or unknown key. Per API, the team also sets
+`rateLimit: "on"` or `"off"` on its `api` instance (§3.4, ADR-0004).
 
 ```yaml
 metadata:
@@ -570,7 +577,9 @@ metadata:
   through the `Tenant` (M5).
 - One or more OIDC issuers (RHBK), each with tokens that carry the caller
   (`azp`), the allowed-APIs claim and the tier claim, with the same claim
-  names.
+  names. An external Keycloak that an API brings must be reachable from
+  Istio's control plane, which fetches its keys about every 20 minutes
+  (ADR-0004).
 - A Redis for the rate limit counters; its address and password secret are
   bootstrap values.
 - Access log providers, when teams may choose one, defined in the mesh
@@ -604,7 +613,7 @@ allowed-API rule, one upgrade for all. It differs in four places:
 
 | First proposal | This design | Why |
 |---|---|---|
-| a `TemplateInstance` per API, with parameters, that renders a gateway | a `TemplateInstance` of `api` per API, with six checked parameters, that renders only the route; one parameterless `TemplateInstance` per tenant for the gateway, with a few validated annotations | the team asks for everything with a `TemplateInstance`; the API rule is derived from the rendered route; admission refuses `valueFrom` (ADR-0002, ADR-0005, ADR-0012) |
+| a `TemplateInstance` per API, with parameters, that renders a gateway | a `TemplateInstance` of `api` per API, with eight checked parameters, that renders only the route; one parameterless `TemplateInstance` per tenant for the gateway, with a few validated annotations | the team asks for everything with a `TemplateInstance`; the API rule is derived from the rendered route; admission refuses `valueFrom` (ADR-0002, ADR-0005, ADR-0012) |
 | one gateway per API | one gateway per tenant, only when the team asks | fewer idle pods, one place for the baseline (ADR-0002) |
 | hand-written `EnvoyFilter`s per team, with Lua | Istio policies, and three platform-owned, tested `EnvoyFilter`s with no Lua | supported APIs for the auth path; tested filters (ADR-0003) |
 | `api-<name>-consumer-*` | `api.<tenant>.<api>`, closed | no collision across tenants, no wildcard (ADR-0006) |
