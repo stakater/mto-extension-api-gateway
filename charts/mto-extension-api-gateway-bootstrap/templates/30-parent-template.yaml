@@ -1,0 +1,85 @@
+# Parent Template (gotemplate): the platform's side of the self-service
+# request. The parent TemplateInstance feeds it every Tenant, every Namespace and
+# every TemplateInstance; it renders, in the platform namespace:
+#   - the team-facing "api-gateway" Template, whose every parameter is a
+#     disableOverride default set here: which tenant owns each namespace, which
+#     request owns each tenant's one gateway, the granted extra host names, and
+#     the platform's gateway settings
+#   - a ConfigMap listing the tenants, host names and requests it skipped, and why
+#
+# Both gotemplate bodies live in files/ (read with .Files.Get, so Template
+# Operator's actions stay out of helm's engine). The team body reaches the
+# parent as the teamGotemplate parameter: the parent prints it as data, never
+# executes it.
+---
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata:
+  name: mto-extension-api-gateway-parent
+  namespace: {{ .Release.Namespace }}
+spec:
+  targetNamespaces:
+    explicit:
+      allow:
+        literal:
+          - {{ .Release.Namespace }}
+  {{- include "mto-extension-api-gateway-bootstrap.templateSync" . | nindent 2 }}
+  parameters:
+    - name: tenants
+      type: array
+    - name: tenantNamespaces
+      type: array
+    - name: templateInstances
+      type: array
+    - name: gatewayNamespace
+      value: {{ .Release.Namespace | quote }}
+      disableOverride: true
+    - name: teamTemplateName
+      value: api-gateway
+      disableOverride: true
+    - name: teamGotemplate
+      value: {{ .Files.Get "files/team-gotemplate.tpl" | toJson }}
+      disableOverride: true
+    - name: tenantLabelKey
+      value: {{ .Values.tenantLabelKey | quote }}
+      disableOverride: true
+    - name: tenantsMode
+      value: {{ .Values.tenants.mode | quote }}
+      disableOverride: true
+    - name: tenantList
+      type: array
+      value: {{ .Values.tenants.list | default list | toJson }}
+      disableOverride: true
+    - name: gatewayClassName
+      value: {{ .Values.gateway.className | quote }}
+      disableOverride: true
+    - name: baseDomain
+      value: {{ .Values.gateway.baseDomain | quote }}
+      disableOverride: true
+    - name: port
+      value: {{ .Values.gateway.port | quote }}
+      disableOverride: true
+    - name: extraHostnames
+      type: object
+      value: {{ .Values.gateway.extraHostnames | default dict | toJson }}
+      disableOverride: true
+    - name: minReplicas
+      value: {{ .Values.gateway.autoscaling.minReplicas | quote }}
+      disableOverride: true
+    - name: maxReplicas
+      value: {{ .Values.gateway.autoscaling.maxReplicas | quote }}
+      disableOverride: true
+    - name: targetCPUUtilizationPercentage
+      value: {{ .Values.gateway.autoscaling.targetCPUUtilizationPercentage | quote }}
+      disableOverride: true
+    - name: pdbMinAvailable
+      value: {{ .Values.gateway.podDisruptionBudget.minAvailable | quote }}
+      disableOverride: true
+    - name: certManagerIssuerKind
+      value: {{ .Values.gateway.tls.certManager.issuerRef.kind | default "ClusterIssuer" | quote }}
+      disableOverride: true
+    - name: certManagerIssuerName
+      value: {{ .Values.gateway.tls.certManager.issuerRef.name | default "" | quote }}
+      disableOverride: true
+  gotemplate: |
+{{ .Files.Get "files/parent-gotemplate.tpl" | indent 4 }}

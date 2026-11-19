@@ -11,9 +11,10 @@ with one `TemplateInstance` that has no parameters, and publishes each API with
 one more `TemplateInstance` that names its host, path and backend. There is no
 security switch to get wrong.
 
-> **Status: design.** The requirements, ADRs and roadmap are proposed; the
-> first chart (story G.1) comes in its own pull request. Start with
-> [docs/vision.md](docs/vision.md), then [docs/design.md](docs/design.md).
+> **Status: walking skeleton.** The bootstrap chart renders one gateway per
+> tenant ([charts/](charts/README.md)); it is render-tested, not yet proven on a
+> cluster, and not released. Start with [docs/vision.md](docs/vision.md), then
+> [docs/design.md](docs/design.md).
 
 ## What a tenant gets
 

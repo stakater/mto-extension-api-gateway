@@ -26,7 +26,23 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: make verify (lint, links, method, tests)
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Install yq
+        env:
+          YQ_VERSION: v4.44.3
+        run: |
+          sudo curl -sSfL -o /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: make verify (lint, links, method, tests, charts)
         run: make verify
 
       - name: Accepted ADRs are immutable

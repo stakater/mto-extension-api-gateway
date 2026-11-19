@@ -1,0 +1,59 @@
+# Install this chart into the platform namespace (default mto-api-gateways).
+# That namespace holds the parent Template and TemplateInstance and the
+# team-facing api-gateway Template; only the platform has access to it. Each
+# tenant's gateway runs in the namespace of the team's request (ADR-0002).
+
+# The ServiceAccount Template Operator v2 runs as. The chart grants it what the
+# parent render needs.
+templateOperator:
+  serviceAccountName: template-operator-template-operator-v2
+  namespace: stakater-template-operator
+
+# The namespace label the Multi-Tenant Operator puts on every tenant namespace.
+# A listener accepts routes only from namespaces with this label set to its
+# tenant (ADR-0002). Only the Multi-Tenant Operator and cluster admins may set it.
+tenantLabelKey: stakater.com/tenant
+
+# Which tenants may request a gateway: "all" (every tenant with a valid name)
+# or "list" (only the names in tenants.list). A team requests its tenant's one
+# gateway with a TemplateInstance of the api-gateway Template.
+tenants:
+  mode: all
+  list: []
+
+gateway:
+  # The GatewayClass of the ambient mesh's own control plane. Only "istio": the
+  # OpenShift-provided "openshift-default" class runs a separate control plane
+  # and certificate authority, so the backend lock can't trust its gateway.
+  className: istio
+  # Required. Each tenant's listener serves *.<tenant>.<baseDomain>.
+  baseDomain: ""
+  port: 443
+  # Extra host names granted per tenant, each on its own listener:
+  #   team-a: [api.team-a.example.org]
+  # A host name inside baseDomain, granted to two tenants, or overlapping
+  # another tenant's (wildcards included) is refused for both and listed in the
+  # skipped-tenants ConfigMap.
+  extraHostnames: {}
+  # Istio applies these to the gateway Deployment it creates (parametersRef).
+  # minReplicas is at least 2, so the disruption budget never blocks a drain.
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  podDisruptionBudget:
+    minAvailable: 1
+  tls:
+    # With an issuer, cert-manager issues one Certificate per listener. Without
+    # one, the platform provides the Secrets <request>-tls and
+    # <request>-tls-extra-<n> in the request's namespace.
+    certManager:
+      issuerRef:
+        kind: ClusterIssuer
+        name: ""
+
+# Template Operator sync mode for every Template: "revert" (default) or
+# "strict". Never "off": it freezes a tenant after its first apply, so upgrades
+# and new tenants' changes would never arrive.
+templateSync:
+  mode: revert

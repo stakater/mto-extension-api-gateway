@@ -1,0 +1,11 @@
+apiVersion: v2
+name: mto-extension-api-gateway-bootstrap
+description: >-
+  Multi-Tenant Operator API Gateway extension, installed once per cluster: one
+  Gateway API Gateway per tenant, rendered by Template Operator v2.
+type: application
+version: 0.1.0
+home: https://github.com/stakater/mto-extension-api-gateway
+sources:
+  - https://github.com/stakater/mto-extension-api-gateway
+keywords: [multi-tenant-operator, gateway-api, istio, openshift]
