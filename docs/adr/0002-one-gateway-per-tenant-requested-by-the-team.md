@@ -66,6 +66,11 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
 - The APIs of one tenant share gateway pods: a load peak on one API reaches the
   others of the same tenant. Autoscaling and the per-caller rate limit reduce
   this; G.12 gives an API its own gateway when it needs one.
+- Two environments of one tenant on one cluster share its gateway: its load,
+  its settings and its issuers. A tenant per environment, or a cluster per
+  environment, keeps them apart. A gateway per tenant and environment was
+  considered on 2026-11-19 and left out of v1: it was seen only on a test
+  cluster.
 - The gateway's pods count against the tenant's quota; a quota below the
   autoscaler's minimum keeps the gateway from starting.
 - Template Operator needs write access to `Gateway`s, ConfigMaps,
