@@ -653,10 +653,11 @@ request.
   tenant's quota; admission keeps tenants from acting as the gateway
   (ADR-0008).
 - **A shared gateway still shares pods.** One tenant's APIs share one gateway's
-  capacity (G.12 for an API that needs its own).
+  capacity. More than one gateway per tenant is a later option, if a need
+  arises (G.12).
 - **One gateway per tenant, also across environments.** Two environments of
   one tenant on one cluster share its gateway, its settings and its issuers;
-  keep them in separate tenants or clusters (ADR-0002).
+  keep them in separate tenants or clusters (ADR-0002), or use G.12 later.
 - **The backend lock covers the API's ports on the pods behind annotated
   routes only.** Other in-mesh callers of the same ports are refused too;
   allowing named internal callers is G.17.

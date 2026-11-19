@@ -311,9 +311,28 @@ both runs kept as evidence. Satisfies **AC-OPS-1**, **AC-OPS-3**, **AC-OPS-4**.
 Needs a supported way to configure RHBK from the cluster; decided in its
 planning doc.
 
-**Story G.12 — A gateway of its own** 📝 *Draft* — opt-in: a second gateway for
-a tenant, for one API or one environment, chosen by the platform per tenant
-(ADR-0002).
+**Story G.12 — More than one gateway per tenant, if a need arises** 📝 *Draft* —
+not in v1: v1 keeps one tenant, one gateway (ADR-0002). If a tenant later
+needs a second gateway (an API whose load must not reach the others, gateway
+settings that differ from the tenant's other APIs, or a second environment on
+the same cluster), the design can support it like this, decided then in an
+ADR:
+
+- the platform allows a tenant more than one gateway, for example a limit per
+  tenant with a default of 1, so tenants don't go back to one gateway per API;
+- gateway names are unique in a tenant, and the oldest request is the
+  tenant's default gateway;
+- an API names its gateway with a `gateway` parameter on its `api` instance,
+  for example `gateway: extra`; without it, the API uses the default;
+- the tenant's child renders the policy, filters, status and rate limit
+  entries for each gateway, and the backend lock allows each gateway that
+  sends traffic to the backend;
+- on a shared host, an API on another gateway gets its own entry `Route` for
+  its path, which is longer than its tenant's prefix, so the router sends it
+  there; a host that is not shared is served by one gateway of the tenant.
+
+Considered on 2026-11-19 and left out of v1: no customer API needed it, and
+it adds parts to every layer.
 
 **Story G.27 — Stable issuer keys** 📝 *Draft* — no `401` when an issuer's
 realm changes: a signing key that stays the same across realm imports (the
