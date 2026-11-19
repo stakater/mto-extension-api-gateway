@@ -191,7 +191,7 @@ spec:
 |---|---|---|
 | `RequestAuthentication` | `api-gateway-jwt` | targets the `Gateway`: one rule per issuer that the tenant or one of its APIs uses, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
 | `EnvoyFilter` | `api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
-| `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (default `bronze`), `azp` (M18) |
+| `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (the caller's highest tier role for the API, by exact text; the lowest when none, ADR-0003, M20), `azp` (M18) |
 | `EnvoyFilter` | `api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
 | `Telemetry` | `api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers |
 | `ConfigMap` | `api-gateway-apis` | the tenant's APIs, routes that are not APIs, conflicts, refused knobs (§7) |
@@ -289,12 +289,18 @@ spec:
                         string_match: { safe_regex: { regex: "^orders\\.team-a\\.apis\\.example\\.com(:[0-9]+)?$" } }
                       - name: ":path"
                         string_match: { safe_regex: { regex: "^/orders/v2([/?].*)?$" } }
-                - metadata:
-                    descriptor_key: tier
-                    default_value: bronze
-                    metadata_key:
-                      key: envoy.filters.http.jwt_authn
-                      path: [{ key: payload }, { key: tier }]
+                - extension:            # the caller's tier role for this API (ADR-0003, M20)
+                    name: envoy.rate_limit_descriptors.expr
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.rate_limit_descriptors.expr.v3.Descriptor
+                      descriptor_key: tier
+                      # R stands for the claim, written out by the template:
+                      # metadata.filter_metadata['envoy.filters.http.jwt_authn']['payload']['allowed_apis'],
+                      # with a check that it is a list, so the expression can't fail.
+                      text: >-
+                        'api.team-a.orders.gold' in R || 'api-orders-consumer-gold' in R ? 'gold' :
+                        'api.team-a.orders.silver' in R || 'api-orders-consumer-silver' in R ? 'silver' :
+                        'bronze'
                 - metadata:
                     descriptor_key: azp
                     metadata_key:
@@ -393,7 +399,7 @@ spec:
             paths: ["/orders/v2", "/orders/v2/*"]     # the route's prefix, segment by segment (A6, M16)
       when:
         - key: request.auth.claims[allowed_apis]
-          values: ["api.team-a.orders", "api.team-a.orders.*"]
+          values: ["api.team-a.orders", "api.team-a.orders.*"]   # + the exact old roles, if mapped (ADR-0006)
         - key: request.auth.claims[azp]
           values: ["*"]
         - key: request.auth.claims[client_id]   # mapped by the team (ADR-0012)
@@ -473,6 +479,8 @@ Every guard in the check has a mutation test, as in the Enterprise harness.
 | Closed | `api.team-a.orders` never matches `api.team-a.orders2`; `api.team.a-orders` never matches `api.team-a.orders` |
 | Claim | `allowed_apis` by default; a list claim in the token. The platform may rename it |
 | Istio | the condition values `api.team-a.orders` (exact) and `api.team-a.orders.*` (prefix ending in the dot); a list claim matches when any value matches (M10) |
+| Migration | the platform may map an API to its old role name (`migration.legacyRoles`); the rule then also accepts `<old>-<tier>` for each defined tier, as exact values (ADR-0006) |
+| Tier | the caller's role `api.<tenant>.<api>.<tier>` (or `<old>-<tier>`) gives the API's tier; the highest wins; none gives the lowest (ADR-0003) |
 
 G.19 tests a missing claim and a claim that is a single string (Q4).
 
@@ -576,8 +584,9 @@ metadata:
 - The Multi-Tenant Operator; tenant namespaces with the mesh labels set
   through the `Tenant` (M5).
 - One or more OIDC issuers (RHBK), each with tokens that carry the caller
-  (`azp`), the allowed-APIs claim and the tier claim, with the same claim
-  names. An external Keycloak that an API brings must be reachable from
+  (`azp`), and the allowed-APIs claim with one role per API and tier
+  (`api.<tenant>.<api>.<tier>`, or the API's old role name during
+  migration), with the same claim names. An external Keycloak that an API brings must be reachable from
   Istio's control plane, which fetches its keys (ADR-0004).
 - Istio's key reload interval set to **3 minutes** in the Service Mesh
   control plane (`PILOT_JWT_PUB_KEY_REFRESH_INTERVAL=3m`; Istio's default is

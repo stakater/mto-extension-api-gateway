@@ -130,8 +130,8 @@ APIs.
   again), its tokens are refused for a few minutes until the keys are
   reloaded and callers get new tokens. Stable signing keys remove this; that
   is a later enhancement (G.27).
-- Every issuer must issue the same claims (`azp`, the allowed-APIs claim, the
-  tier claim).
+- Every issuer must issue the same claims: `azp`, and the allowed-APIs claim
+  with the caller's roles, one per API and tier (ADR-0003, ADR-0006).
 - The guarantee depends on admission (ADR-0008) more than the Kuadrant form
   did, because Istio has no overrides. Minimum admission is built before any
   API is served (G.8).

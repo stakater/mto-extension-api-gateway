@@ -88,7 +88,7 @@ sequenceDiagram
   participant Z as ztunnel
   participant B as Backend orders
   C->>K: client credentials
-  K-->>C: JWT (azp=shop, allowed_apis=[api.team-a.orders], tier=silver)
+  K-->>C: JWT (azp=shop, allowed_apis=[api.team-a.orders.silver])
   C->>E: GET orders.team-a.apis.example.com/orders/v2 + token
   E->>G: TLS to the tenant gateway
   Note over G: remove the caller's x-sub, x-roles and team headers

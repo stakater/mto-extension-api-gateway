@@ -19,7 +19,7 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 | **Security baseline** | the token floor and default deny (once per cluster), and the tenant's `RequestAuthentication`, header filter and rate limit filter | The checks every request passes on the tenant gateway: a valid token from the platform's issuer, caller headers replaced from the token, the rate limit tier. Set by the platform; a route can't weaken them (ADR-0004). |
 | **Allowed-API rule** | Istio `AuthorizationPolicy` `ALLOW` per API, in the gateway's namespace | The caller's token must name this API in its allowed-APIs claim: `api.team-a.orders`. Checked on the API's host and path, so several APIs can share a host. Derived from the tenant and the API name, never typed by hand. |
 | **Allowed-APIs claim** | the caller's token (RHBK) | A token claim that lists the APIs a caller may use, for example `allowed_apis: [api.team-a.orders]`. The platform names the claim. |
-| **Tier** | a token claim, platform values | `bronze`, `silver`, `gold`: the caller's request rate on every API. The platform sets the rates. |
+| **Tier** | a role in the caller's token, one per API; platform values | `bronze`, `silver`, `gold`: the caller's request rate on one API, from its role `api.team-a.orders.silver`. The platform sets the rates; the highest role wins; no role gives the lowest. |
 | **Backend lock** | Istio `AuthorizationPolicy` in the API's namespace | "Only the tenant gateway may call this backend." Rendered for every API. Another pod in the cluster is refused. |
 | **Rate limit service** | the platform namespace | Counts calls per tenant, API, caller and tier for every tenant gateway, with Redis, so each API has its own limit. Deployed by the bootstrap chart; tiers are platform values. |
 | **Template Operator** | Stakater | Renders the team's gateway request, each `api` instance, and one policy child per tenant. |
@@ -88,8 +88,9 @@ Three words that are easy to confuse:
    `api.team-a.orders` for the host `orders.team-a.apis.example.com` and the
    path `/orders/v2`, and the backend lock on Service `orders`. A second API
    can use the same host with another path, for example `/payments/v1`.
-1. `shop` gets a token from RHBK with `allowed_apis: [api.team-a.orders]` and
-   `tier: silver`, and calls `https://orders.team-a.apis.example.com/orders/v2`.
+1. `shop` gets a token from RHBK with `allowed_apis:
+   [api.team-a.orders.silver]` (access to `orders`, tier silver), and calls
+   `https://orders.team-a.apis.example.com/orders/v2`.
 1. The gateway checks the token, checks the allowed-API rule, replaces any
    `x-sub` and `x-roles` the caller sent with values from the token, counts the
    call against `silver`, rewrites the path to `/orders/v1`, and calls

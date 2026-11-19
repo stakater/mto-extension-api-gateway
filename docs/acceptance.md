@@ -49,11 +49,12 @@ Fixture:
   `api.team-a.example.org`), both in `team-a-dev`.
 - APIs whose backend can't be locked: `legacy` in `team-a-dev`
   (an `ExternalName` Service) and `stray` in `team-a-outside`.
-- Clients of the issuer: `shop` (`allowed_apis: [api.team-a.orders]`, tier
-  `silver`, `client_id: shop-app`), `bank` (`[api.team-b.billing]`, `gold`),
-  `near` (`[api.team-a.orders2]`, `silver`), `core` (`[api.team.a-orders]`,
-  `silver`), `bare` (no `allowed_apis`, no tier), `anon` (`allowed_apis:
-  [api.team-a.orders]`, no `azp`).
+- Clients of the issuer (roles in `allowed_apis`, one per API and tier):
+  `shop` (`[api.team-a.orders.silver]`, `client_id: shop-app`), `bank`
+  (`[api.team-b.billing.gold]`), `near` (`[api.team-a.orders2.silver]`),
+  `core` (`[api.team.a-orders.silver]`), `bare` (no `allowed_apis`), `anon`
+  (`[api.team-a.orders.silver]`, no `azp`), `legacy-shop`
+  (`[api-orders-consumer-gold]`, today's role name).
 - A pod `intruder` in `team-a-test`, in the mesh, and a pod `outsider` in
   `team-a-outside`, not in the mesh.
 - A user `alice` with the Multi-Tenant Operator's editor role in `team-a`.
@@ -211,10 +212,14 @@ in a loop gets `429` after its tier's limit within the window; the first
 requests got `200`.
 
 **AC-RL-2 — A caller without a known tier gets the lowest.** *(R+L)* A token
-with `allowed_apis: [api.team-a.orders]` and no tier claim, and one with tier
-`platinum` (not defined by the platform), each get `429` at the `bronze`
-limit. Render: the tier descriptor defaults to `bronze`, and the service's
-configuration has a limit for a tier value it doesn't name.
+with `allowed_apis: [api.team-a.orders]` (no tier role), and one with
+`api.team-a.orders.platinum` (a tier the platform doesn't define), each get
+`429` at the `bronze` limit. A token with both `api.team-a.orders.bronze` and
+`api.team-a.orders.gold` gets the `gold` limit. A token whose
+`allowed_apis` is one string, not a list, is still limited (the expression
+never fails, M20). A hyphenated API name gives the right tier. Render: every
+API's tier expression checks the tiers from the highest rate down and ends
+with the lowest tier.
 
 **AC-RL-3 — Counters are per tenant, API and caller.** *(L)* While `shop` is
 at its limit on `orders`, `shop` calling `payments` (another API of `team-a`
@@ -284,8 +289,10 @@ changes nothing in the render. The one team switch is an API's own rate limit
 (AC-RL-7).
 
 **AC-R-4 — Allowed-API rules are derived and closed.** *(R)* Every per-API
-condition is exactly `api.<tenant>.<api>` and `api.<tenant>.<api>.*`; a
-platform prefix setting without the tenant or the API in it fails the render.
+condition is exactly `api.<tenant>.<api>` and `api.<tenant>.<api>.*`, plus,
+for an API in `migration.legacyRoles`, its old roles `<old>-<tier>` as exact
+values, one per defined tier and never a wildcard; a platform prefix setting
+without the tenant or the API in it fails the render.
 
 **AC-R-5 — The listener takes only its tenant.** *(R)* Every tenant gateway's
 listener has `allowedRoutes.namespaces.from: Selector` on
@@ -369,11 +376,13 @@ the tenant gateway; one change moves it back. A client calling once per
 second through both changes sees no `5xx` and no change of address. The
 per-API gateway is removed only after the agreed period.
 
-**AC-MIG-2 — The tokens are ready before the switch.** *(L)* Before the move,
-every caller of `orders` gets tokens with the old role and with
-`api.<tenant>.orders` and `tier`. A check lists each caller of the API whose
-token lacks a new claim, and the move doesn't start while the list is not
-empty.
+**AC-MIG-2 — Today's tokens work unchanged.** *(L)* With
+`migration.legacyRoles: {team-a.orders: api-orders-consumer}`, `legacy-shop`'s
+current token (`api-orders-consumer-gold`) gets `200` and the `gold` limit on
+`orders` through the tenant gateway, as through the per-API gateway; the same
+token gets `403` on every other API. No change in the identity provider or in
+any token is needed for the move. The parent refuses an old role name mapped
+to APIs of two tenants.
 
 **AC-MIG-3 — The backend gets what it reads today.** *(L)* Before the move,
 the API team states which headers its backend reads (`x-sub`, `x-roles`,

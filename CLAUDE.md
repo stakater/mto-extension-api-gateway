@@ -63,7 +63,10 @@ the golden only after an intended change: `make golden`.
    `x-sub` or `x-roles`, and never maps to a reserved header.
 1. **The allowed-API rule is derived and closed** (ADR-0006):
    `api.<tenant>.<api>`, exact or followed by `.`; never a typed pattern,
-   never a wildcard.
+   never a wildcard. During migration the platform may map an API to its old
+   role name; the rule then also takes `<old>-<tier>` as exact values. The
+   tier is the caller's role for the API, matched by exact text (ADR-0003),
+   never by a pattern and never with Lua.
 1. **A team's request decides only where its gateway runs and what it is
    called** (ADR-0002). The `api-gateway` Template has no parameter a team
    can set (all `disableOverride`); the tenant comes from the parent's

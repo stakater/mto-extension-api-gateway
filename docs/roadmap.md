@@ -44,7 +44,8 @@ in `docs/spikes/g19-kind-findings.md` on Istio 1.27.9 and 1.30.8 for: root
 namespace `selector` policies combined with `targetRefs` policies on a
 gateway; the empty `ALLOW` denying and `rules: [{}]` allowing; claim headers
 overwritten and caller copies removed, `x_sub` included; virtual-host rate
-limit actions with no name (M14) and one entry per API (M18), a missing `azp` and an unknown tier; a token of another tenant's issuer (M17, Q18); an unreachable issuer's keys
+limit actions with no name (M14) and one entry per API (M18), a missing `azp`, an unknown tier, and the tier expression with odd tokens (no
+roles, one role as a string, several tiers, hyphenated API names; M20); a token of another tenant's issuer (M17, Q18); an unreachable issuer's keys
 while the other issuers keep working (Q19); a root-namespace policy change and
 open connections (Q20); the
 gateway's HBONE identity at a locked backend; Template Operator's empty LIST
@@ -70,7 +71,9 @@ IngressController; one shared host split by path between two tenants'
 gateways with reencrypt `Route`s, `InterNamespaceAllowed`, the `entry`
 listener and the service CA certificate (R1–R3, Q17); the Service Mesh control
 plane's key reload interval set to 3 minutes, and how long tokens are refused
-after an issuer's keys change (M19); the Service Mesh operator's `istio` GatewayClass, port
+after an issuer's keys change (M19); that Service Mesh 3's proxy includes the
+expression rate limit descriptor (M20; if not, ADR-0003's tier claim fallback);
+the Service Mesh operator's `istio` GatewayClass, port
 mapping and `parametersRef`; the open questions in `gateway-baseline.md` that
 kind can't answer; evidence in `docs/spikes/g0-findings.md`; each ADR
 Accepted or superseded. Planning:
@@ -238,8 +241,8 @@ every API, so that no caller uses more than its share of a tenant's gateway.
 Done: the bootstrap chart deploys the rate limit service with its tier
 configuration from bootstrap values (Redis address and secret as values); the
 child renders the rate limit `EnvoyFilter` (one entry per API, matched on
-its host and path; descriptors `tenant`, `api`, `tier` defaulting to `bronze`,
-`azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`
+its host and path; descriptors `tenant`, `api`, `tier` from the caller's
+role for the API by exact text, the lowest when none (ADR-0003, M20), `azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`
 per tenant and per API, and the failure mode as platform values; live: `429` at the limit, per API and caller, a missing or unknown
 tier at `bronze`, an exempt tenant and an exempt API unlimited; a change of
 the tiers reaches the service without a pod restart. Satisfies **AC-RL-1**,
@@ -287,15 +290,16 @@ to another tenant's gateway; a tenant's OpenShift `Route` under the base
 domain or for a shared host (ADR-0009). Satisfies **AC-ISO-6** (shared list).
 
 **Story G.9 — Migration from per-API gateways** 📝 *Draft* — the per-API
-gateways serve production, so a runbook and a lab rehearsal that move one API
-at a time, on the test cluster first, with no change for callers: the new
-claims (`api.<tenant>.<api>`, `tier`) added to every caller's tokens next to
-the old roles, and checked; the headers each backend reads compared through
-both gateways; a values file turned into an `api` instance on the same shared
-host and path; one change that moves the path's entry point and one that moves
-it back; the error rate, latency and `401`/`403`/`429` counts compared before
-and after; the old gateway removed after the agreed period. Satisfies
-**AC-MIG-1**, **AC-MIG-2**, **AC-MIG-3**, **AC-MIG-4**.
+gateways serve production, so the runbook in
+[`migration.md`](migration.md) and a lab rehearsal that move one API at a
+time, on the test cluster first, with no change for callers: today's tokens
+work through the platform's old-role mapping (ADR-0006); the headers each
+backend reads compared through both gateways; a values file turned into an
+`api` instance on the same shared host and path; one change that moves the
+path's entry point and one that moves it back; the error rate, latency and
+`401`/`403`/`429` counts compared before and after; the old gateway removed
+after the agreed period. Satisfies **AC-MIG-1**, **AC-MIG-2**, **AC-MIG-3**,
+**AC-MIG-4**.
 
 **Story G.10 — Upgrades prove themselves** 📝 *Draft* — the live suite runs
 before and after a Service Mesh minor upgrade and after a chart version bump;

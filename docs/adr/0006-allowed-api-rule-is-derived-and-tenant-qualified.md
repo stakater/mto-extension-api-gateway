@@ -1,7 +1,8 @@
 # ADR-0006: The allowed-API rule is derived, tenant-qualified and closed
 
 - **Status:** Proposed
-- **Date:** 2026-11-16
+- **Date:** 2026-11-16 (on 2026-11-19, old role names accepted during
+  migration by a platform mapping)
 
 ## Context
 
@@ -27,8 +28,14 @@ claim matches any value of a list claim, exactly or by prefix (M10).
 - The platform may change the prefix (`api`) and the claim name, install-wide.
   It can't make the rule a wildcard: a render check fails on any pattern that
   doesn't contain both the tenant and the API name, closed.
-- Existing role names in another format move with a one-time mapping in the
-  identity provider (story G.9), not with a looser rule.
+- **Old role names during migration.** So that callers' tokens don't change
+  when an API moves (G.9), the platform maps the API to its old role name
+  (`migration.legacyRoles`, for example `team-a.orders: api-orders-consumer`).
+  The API's rule then also accepts `<old>-<tier>` for each tier the platform
+  defines, as exact values, never a wildcard. The parent refuses an old name
+  mapped to APIs of two tenants, or one that is the start of another mapped
+  old name. A team can't set it. Renaming the roles in the identity provider
+  later removes the mapping.
 
 ## Consequences
 
@@ -43,6 +50,10 @@ claim matches any value of a list claim, exactly or by prefix (M10).
 - **The pattern as a parameter.** Rejected: the failure it causes (a pattern
   one character too wide) is the one we want to rule out.
 - **`-` as separator, matching today's role names.** Rejected: names collide
-  across tenants.
+  across tenants. Old names are accepted only through the platform's
+  migration mapping, as exact values.
+- **Rename every role in the identity provider before the move.** Rejected for
+  the move: every caller's token would change, and a realm import gives new
+  signing keys (design §12). It can follow later.
 - **One role per tenant.** Rejected: every caller of one API could call all of
   the tenant's APIs.

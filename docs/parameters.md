@@ -53,7 +53,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | gateway replicas, fixed at 3 | `gateway.autoscaling` (minimum, maximum, CPU target) and `gateway.podDisruptionBudget` | platform value | G.1 ✅ |
 | gateway class `istio` | `gateway.className`, only `istio` | platform value | G.1 ✅ |
 | TLS terminate, the certificate | `gateway.tls.certManager.issuerRef`, or a Secret the platform provides | platform value | G.1 ✅ |
-| rate limit tiers, in the platform's rate limit chart | `rateLimit.tiers` and `rateLimit.tierClaim` | platform value | G.5 |
+| rate limit tiers, in the platform's rate limit chart | `rateLimit.tiers`; the caller's tier from its role for the API (ADR-0003) | platform value | G.5 |
 | rate limit service and its store | a rate limit service that speaks Envoy's rate limit API, with Redis | platform | G.5 |
 | `EnvoyFilter` that strips caller headers | a platform-owned header filter, rendered with every tenant gateway (ADR-0003) | fixed | G.2 |
 | `EnvoyFilter` for the rate limit (with Lua) | a platform-owned rate limit filter with no Lua; tier and caller read as plain claims (ADR-0003) | fixed | G.5 |
@@ -115,7 +115,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `auth.claims.caller` | `azp` | the caller's identity: the `x-sub` header and the rate limit counter | G.2, G.5 |
 | `auth.headers.caller`, `auth.headers.roles` | `x-sub`, `x-roles` | the headers the gateway sets from the token | G.2 |
 | `api.rulePrefix` | `api` | the first segment of `api.<tenant>.<api>` | G.24 |
-| `rateLimit.tierClaim` | `tier` | the claim with the caller's tier | G.5 |
+| `migration.legacyRoles` | `{}` | **per API**, `<tenant>.<api>: <old role name>`: the API also accepts `<old>-<tier>` roles, so callers' tokens don't change when it moves (ADR-0006) | G.9 |
 | `rateLimit.tiers` | `gold` 1000/s, `silver` 50/s, `bronze` 10/s | the tiers and their rates | G.5 |
 | `rateLimit.defaultTier` | `bronze` | the catch-all for a missing or unknown tier; never "no limit" | G.5 |
 

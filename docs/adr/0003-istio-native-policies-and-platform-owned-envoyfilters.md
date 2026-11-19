@@ -3,7 +3,8 @@
 - **Status:** Proposed
 - **Date:** 2026-11-16 (rewritten on 2026-11-17; the first version chose
   Kuadrant policies, see Alternatives; amended the same day after an
-  independent design review; on 2026-11-19 the rate limit counts per API)
+  independent design review; on 2026-11-19 the rate limit counts per API, and
+  the tier comes from the caller's role for the API)
 
 ## Context
 
@@ -110,9 +111,18 @@ two services, mostly for features that are not required.
 - **Rate limit: EnvoyFilter 2.** Envoy's rate limit filter before `router`,
   and rate limit actions at the virtual-host level, with no virtual-host or
   port name to match: one entry per API, matched on the API's host and path
-  (M18). Descriptors: `tenant`, `api`, then `tier` (default `bronze`) and
-  `azp`, read from the validated token. Each API counts separately, as the
-  per-API gateways do today. The rate limit service is
+  (M18). Descriptors: `tenant`, `api`, `tier` and `azp`. Each API counts
+  separately, as the per-API gateways do today.
+- **The tier comes from the caller's role for the API, with exact text.** As
+  today, a caller has one role per API and tier, in the allowed-APIs claim.
+  Envoy's expression descriptor (`envoy.rate_limit_descriptors.expr`, CEL,
+  M20) checks the tiers from the highest rate down: is
+  `api.<tenant>.<api>.<tier>`, or the API's old role name `<old>-<tier>`
+  during migration (ADR-0006), in the claim? The first one found is the tier;
+  none found gives the lowest tier. No Lua, no pattern: a name with hyphens
+  can't break it. The template writes the expression so that it can't fail:
+  it checks that the claim is a list, because Envoy applies no limit when an
+  expression fails (M20). Tokens and the identity provider stay as they are. The rate limit service is
   deployed by the bootstrap chart and reached through Istio's documented
   outbound cluster name (`outbound|<port>||<host>`). A tenant or an API the
   platform exempts gets `unlimited` in the service's configuration, so the
@@ -179,6 +189,11 @@ two services, mostly for features that are not required.
   protection would depend on the order and success of every apply.
 - **Istio-native only, no rate limit.** Rejected: the rate limit is a
   requirement.
+- **A tier claim in the token: one `tier` per caller, or a table of tiers per
+  API (`api_tiers`).** Kept as the fallback if Service Mesh's proxy lacks the
+  expression descriptor (G.0). Not chosen: the identity provider and every
+  token change, and a realm import gives new signing keys (design §12).
+- **Today's Lua tier lookup, fixed.** Rejected: no Lua in the request path.
 - **One rate limit counter per tenant, tier and caller, for all of a tenant's
   APIs (the version before 2026-11-19).** Rejected: today each API counts
   separately, so a caller of two APIs would get `429` sooner after a move, a
