@@ -19,8 +19,9 @@ beyond their routes:
 
 No team changed scaling or public paths. Other differences (an external
 backend, a legacy issuer, no backend lock, one public host split by path) are
-not settings: they are later stories (G.16, G.9, G.17), or the `api` instance
-and the entry point (ADR-0005, G.18).
+not settings: they are parameters of the `api` instance (ADR-0014 for the
+external backend, ADR-0007 for the lock), later stories (G.9, G.17), or the
+entry point (ADR-0005, G.18).
 
 Template Operator facts (T6–T8): the render context of an instance holds its
 name, namespace and labels, not its annotations; a parameter can read a

@@ -47,8 +47,10 @@ overwritten and caller copies removed, `x_sub` included; virtual-host rate
 limit actions with no name (M14) and one entry per API (M18), a missing `azp`, an unknown tier, and the tier expression with odd tokens (no
 roles, one role as a string, several tiers, hyphenated API names; M20); a token of another tenant's issuer (M17, Q18); an unreachable issuer's keys
 while the other issuers keep working (Q19); a root-namespace policy change and
-open connections (Q20); the
-gateway's HBONE identity at a locked backend; Template Operator's empty LIST
+open connections (Q20); an external backend through an `ExternalName`
+Service, `ServiceEntry` and `DestinationRule` (Q22); the waypoint lock: other callers of the Service refused, the gateway's traffic and
+the open paths allowed, probes and monitoring working, and which calls bypass
+the waypoint (M4, M21, Q5, Q21); Template Operator's empty LIST
 and missing-key behaviour (T6, T7); the default Service type of a gateway
 (M13); that an `AuthorizationPolicy` scoped by host and path keeps two APIs
 on one host apart, with segment prefixes, `//`, `/./`, `/../`, `%2F`, a query
@@ -209,13 +211,31 @@ routes renders cleanly. Satisfies **AC-OPS-2** (route parts).
 As an API team, I want my backend to accept calls only from my tenant's
 gateway, so that nobody in the cluster can skip the gateway's checks.
 
-Done: per backend Service of an API's route, an Istio
-`AuthorizationPolicy` (L4, ztunnel): `DENY` on the target ports from every
-identity but the tenant gateway's; a backend that can't be locked (no
-selector, `ExternalName`, a named `targetPort`, a namespace outside the mesh)
-gets no API rule and is listed; live: `intruder` and `outsider` refused, also
-after an extra `ALLOW`; the gateway allowed. Satisfies **AC-ISO-5**,
-**AC-ISO-7**.
+Done: per backend namespace with a locked API, a waypoint
+`api-gateway-waypoint` (autoscaled, platform values); per backend Service, an
+Istio `AuthorizationPolicy` on the Service, enforced by the waypoint: `DENY`
+every path but `backendLock.publicPaths` from every identity but the tenant
+gateway's (ADR-0007); the team's `backendLock: "off"` and
+`backendLock.lockedTenants`; a backend that can't be locked (no selector,
+`ExternalName`, a namespace outside the mesh or without a waypoint label)
+gets no API rule and is listed; live: `intruder` refused through the Service,
+also after an extra `ALLOW`; the open paths, probes and monitoring work; the
+gateway allowed; calls to a pod's IP recorded (Q21). Satisfies **AC-ISO-5**,
+**AC-ISO-7**, **AC-ISO-11**.
+
+**Story G.16 — Backends outside the cluster** 📝 *Draft*
+
+As an API team, I want to publish an API whose backend runs outside the
+cluster, as I can today, so that every API of the per-API gateways can move.
+
+Done: the `api` instance's `externalHost`, `tls`, `tlsSni` and `tlsSecret`
+(exactly one of `service` and `externalHost`); the `api` instance renders the
+`ExternalName` Service and the route with the `Host` rewrite; the child
+renders the `ServiceEntry` and the `DestinationRule` in the gateway's
+namespace, as today's chart (ADR-0014); no lock, no token forwarding; the
+status lists the API as `external`; live on the kind lab with a TLS host
+outside the mesh, `SIMPLE` and `MUTUAL`. Satisfies **AC-EXT-1**,
+**AC-EXT-2**.
 
 **Story G.24 — An API's route gets its rule** 📝 *Draft*
 
@@ -352,11 +372,6 @@ API, delivered through the Multi-Tenant Operator's telemetry gateways.
 **Story G.15 — Documentation** 📝 *Draft* — the extension's page in the
 Multi-Tenant Operator docs, and a tutorial that fits the free edition (two
 tenants).
-
-**Story G.16 — Backends outside the cluster** 📝 *Draft* — an API whose
-backend is outside the cluster (today an `ExternalName` Service, refused in
-v1): a platform-approved list of external hosts per tenant, reached through
-the mesh's egress, with what the lock can and can't promise there.
 
 **Story G.17 — Internal callers of an API backend** 📝 *Draft* — an API team
 names ServiceAccounts of its own namespace that may also call the backend's

@@ -14,7 +14,7 @@ per-API values files of the pattern we see in practice change both parts:
 1. **Teams set few route fields.** Each file renders one route with one rule.
    Teams set the public path (12 of 12), a path rewrite (10), an in-cluster
    Service and port (11), and an exact operation, path and method (2). One
-   file has an external backend (G.16). No file uses header filters,
+   file has an external backend (ADR-0014). No file uses header filters,
    timeouts, retries, weights, mirrors or a second rule.
 1. **No team chose a host.** All APIs share one front-door host, and the path
    selects the API. With one gateway per tenant (ADR-0002), a tenant's APIs
@@ -64,11 +64,13 @@ spec:
 | `host` | no | `<api>.<tenant>.<base domain>` | a lowercase host name, no wildcard; one of the tenant's hostnames, or a shared host when `path` is under one of the tenant's prefixes there (ADR-0009) |
 | `path` | yes | — | starts with `/`; segments of letters, digits, `-`, `.`, `_`, `~`; no empty, `.` or `..` segment; no trailing `/`, except `/` alone |
 | `rewrite` | no | no rewrite | as `path`; not with `operations` |
-| `service` | yes | — | a DNS label: a `Service` in the instance's namespace |
+| `service` | yes, unless `externalHost` | — | a DNS label: a `Service` in the instance's namespace |
 | `port` | yes | — | 1 to 65535 |
 | `operations` | no | every path under `path` | `METHOD /exact/path`, comma-separated, at most 10; each path under `path`; methods `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` |
 | `issuers` | no | the tenant's default issuers | names of issuers the platform registered, comma-separated: from `defaultIssuers`, the tenant's `tenantIssuers`, or registered for the tenant (ADR-0004) |
 | `rateLimit` | no | `"on"` | `"on"` or `"off"`; `"off"` is refused in a tenant the platform locks (ADR-0004) |
+| `backendLock` | no | `"on"` | `"on"` or `"off"`; `"off"` is refused in a tenant the platform locks (ADR-0007) |
+| `externalHost`, `tls`, `tlsSni`, `tlsSecret` | for a backend outside the cluster | — | instead of `service`; as in today's chart (ADR-0014) |
 
 - **The instance renders the route.** In its namespace, with `sync: strict`,
   it renders the `HTTPRoute` `api.<api>`: `parentRefs` to the tenant's
@@ -118,7 +120,8 @@ rules:
   exact rule from it. The rule and the route come from the same object.
 - A team gets only the route features that are parameters: one host, one
   path prefix or a list of exact operations, one rewrite, one backend. This
-  covers every route in the twelve files except the external backend (G.16).
+  covers every route in the twelve files, the external backend included
+  (ADR-0014).
   Each new feature is a new parameter, with a story.
 - Several APIs share one host on one tenant gateway, split by path. The v1
   limit "one API per hostname" is gone (ADR-0003, design §12).

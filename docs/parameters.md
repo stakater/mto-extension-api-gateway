@@ -26,6 +26,8 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `backend.internal.service`, `backend.internal.port` | `HTTPRoute` `rules[].backendRefs[]` `name`, `port` | team input | G.3 |
 | `backend.internal.pathPrefix` (the backend's path) | `HTTPRoute` `URLRewrite` filter, `ReplacePrefixMatch` | team input | G.3 |
 | `backend.internal.namespace` | none. The backend is in the route's namespace, so no `ReferenceGrant` is needed | — | G.3 |
+| `backend.external.host`, `.port`, `.pathPrefix` | the `api` instance's `externalHost`, `port`, `rewrite`; the `ExternalName` Service and the `Host` rewrite are rendered (ADR-0014) | team input | G.16 |
+| `backend.external.tls.mode`, `.sni`, `.credentialName` | the `api` instance's `tls`, `tlsSni`, `tlsSecret` (a Secret in the gateway's namespace); the `ServiceEntry` and `DestinationRule` are rendered (ADR-0014) | team input | G.16 |
 | `auth.jwt.allowedApis` (free text) | the rule `api.<tenant>.<api>`, closed; the team gives only the API name, as the name of its `api` instance (ADR-0005) | derived | G.3 |
 | `hosts.internalDomain` (a second, internal host) | open: a second base domain on its own listener, or a decision of the entry point (Q10) | platform value | G.18 |
 
@@ -35,8 +37,9 @@ Names of planned values are proposals. Each story fixes the names it builds.
 |---|---|---|---|
 | `auth.enabled` | the token floor, the default deny and the allowed-API rules are always rendered (ADR-0004) | fixed | G.2 |
 | `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003) | fixed | G.5 |
-| `security.allowGatewayAccessOnly` | the backend lock is always rendered; a route whose backend can't be locked serves nothing | fixed | G.4 |
-| `security.waypoint.create`, `security.waypoint.name` | no waypoint. ztunnel enforces the backend lock on the mesh identity (L4) | fixed | G.4 |
+| `security.allowGatewayAccessOnly`, `security.allowDirectBackendAccess` | the `api` instance's `backendLock: "on"` (default) or `"off"`; the platform can lock a tenant (ADR-0007) | team, within platform bounds | G.4 |
+| `security.waypoint.create`, `security.waypoint.name`, `.autoscaling` | the child renders one waypoint `api-gateway-waypoint` per namespace with a locked API, autoscaled with platform values (ADR-0007) | platform value | G.4 |
+| `security.publicPaths` | `backendLock.publicPaths`, a platform list of exact paths | platform value | G.4 |
 
 ### Security values the team sets today: now the platform's
 
@@ -69,7 +72,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | Today | In this extension | Who | Story |
 |---|---|---|---|
 | mesh labels on the namespaces | stay in the `Tenant`; the extension reports a namespace outside the mesh | platform, in the Multi-Tenant Operator | G.6 |
-| the waypoint label on the backend namespace | not needed: no waypoint | — | G.4 |
+| the waypoint label on the backend namespace | stays: `istio.io/use-waypoint`, set through the `Tenant`; the extension reports a namespace without it | platform, in the Multi-Tenant Operator | G.4 |
 | the identity provider's client and role per API | manual; the role is `api.<tenant>.<api>` | platform, in RHBK | G.11 |
 
 ## 2. The platform's values (bootstrap chart)
@@ -106,6 +109,9 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `rateLimit.unlimitedTenants` | `[]` | tenants the platform exempts from the rate limit; their filter stays (ADR-0004) | G.5 |
 | `rateLimit.unlimitedApis` | `[]` | single APIs the platform exempts, as `<tenant>.<api>`; the tenant's other APIs keep their limits (ADR-0004) | G.5 |
 | `rateLimit.lockedTenants` | `[]` | tenants whose teams may not turn an API's limit off; their `rateLimit: "off"` is refused (ADR-0004) | G.5 |
+| `backendLock.publicPaths` | `/metrics`, `/health`, `/health/live`, `/health/ready`, `/healthz` | paths on a locked backend that anyone may call; exact paths, never a pattern (ADR-0007) | G.4 |
+| `backendLock.waypoint.autoscaling.minReplicas`, `.maxReplicas` | `3`, `5` | each backend namespace's waypoint, as today | G.4 |
+| `backendLock.lockedTenants` | `[]` | tenants whose teams may not turn a backend lock off (ADR-0007) | G.4 |
 | `istio.rootNamespace` | `istio-system` | where the token floor and default deny live | G.2 |
 | `istio.trustDomain` | `cluster.local` | the trust domain in the gateway's principal for the backend lock | G.4 |
 | `headers.reserved` | the platform's list | header names a team can't map a claim to, always removed from callers | G.2, G.25 |
@@ -116,11 +122,14 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `auth.headers.caller`, `auth.headers.roles` | `x-sub`, `x-roles` | the headers the gateway sets from the token | G.2 |
 | `api.rulePrefix` | `api` | the first segment of `api.<tenant>.<api>` | G.24 |
 | `migration.legacyRoles` | `{}` | **per API**, `<tenant>.<api>: <old role name>`: the API also accepts `<old>-<tier>` roles, so callers' tokens don't change when it moves (ADR-0006) | G.9 |
+| `migration.oldGateways` | `{}` | **per API**, `<tenant>.<api>: <old gateway's service account principal>`: the API's lock also lets the old gateway pass while both run (ADR-0007, docs/migration.md) | G.9 |
 | `rateLimit.tiers` | `gold` 1000/s, `silver` 50/s, `bronze` 10/s | the tiers and their rates | G.5 |
 | `rateLimit.defaultTier` | `bronze` | the catch-all for a missing or unknown tier; never "no limit" | G.5 |
 
-No platform value is a switch for the token check, the header replacement or
-the backend lock. The rate limit can be turned off: by the team for its API
+No platform value is a switch for the token check or the header replacement.
+The backend lock can be turned off by the team for its API (`backendLock:
+"off"`, unless the tenant is in `backendLock.lockedTenants`, ADR-0007). The
+rate limit can be turned off: by the team for its API
 (the `api` instance's `rateLimit: "off"`, unless the tenant is in
 `rateLimit.lockedTenants`), or by the platform (`rateLimit.unlimitedTenants`,
 `rateLimit.unlimitedApis`). No team annotation names a security setting
@@ -133,7 +142,7 @@ the backend lock. The rate limit can be turned off: by the team for its API
 | the gateway request | a `TemplateInstance` of `api-gateway`: its namespace and name, no parameters | `api-gateway` in `team-a-dev` |
 | team settings | annotations `api-gateway.stakater.com/*` on the request: `claim-headers`, `correlation-id`, `access-log`, `trace-headers`; validated, refused keys listed (ADR-0012) | `claim-headers: client_id=x-client` |
 | the API | a `TemplateInstance` of `api` in the backend's namespace; its name is the API name, a DNS label unique in the tenant (ADR-0005) | `orders` in `team-a-dev` |
-| host, path, rewrite, backend, operations | the `api` instance's parameters `host` (default `<api>.<tenant>.<base domain>`), `path`, `rewrite`, `service`, `port`, `operations`, `issuers`, `rateLimit`; checked by the template; APIs share a host by path (ADR-0005) | `orders.team-a.apis.example.com`, `/orders/v2` → `/orders/v1`, Service `orders` port 80 |
+| host, path, rewrite, backend, operations | the `api` instance's parameters `host` (default `<api>.<tenant>.<base domain>`), `path`, `rewrite`, `service` or `externalHost` (with `tls`, `tlsSni`, `tlsSecret`, ADR-0014), `port`, `operations`, `issuers`, `rateLimit`, `backendLock`; checked by the template; APIs share a host by path (ADR-0005) | `orders.team-a.apis.example.com`, `/orders/v2` → `/orders/v1`, Service `orders` port 80 |
 
 The first proposal's six parameters map like this:
 
@@ -159,13 +168,13 @@ per tenant.
 | the listener host name `*.<tenant>.<base domain>` | the tenant and `gateway.baseDomain` |
 | the allowed-API rule `api.<tenant>.<api>` and the tenant floor `api.<tenant>.` | the prefix, the tenant, the annotation |
 | the backend lock's principal `cluster.local/ns/<namespace>/sa/<request>-istio` | the gateway's namespace and name |
-| the backend lock's pod selector and ports | the backend `Service`'s selector and target ports |
+| the backend lock's target | the backend `Service` (the policy's `targetRefs`), enforced by the namespace's waypoint |
 | which request owns the tenant's gateway | the oldest valid request (`owner`) |
 
 ## 5. Fixed: never a parameter
 
 The token floor and the issuer pin; the default deny; the closed allowed-API
-rule per API; the header replacement; the rate limit; the backend lock; HTTPS
+rule per API; the header replacement; HTTPS
 with TLS terminated at the gateway; `allowedRoutes` from the tenant's
 namespaces only, `HTTPRoute` only; sync mode `strict` for the team-facing
 Template; no `EnvoyFilter` but the two allowlisted platform filters, and no

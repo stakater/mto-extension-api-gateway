@@ -30,8 +30,9 @@ same way.
   `Service`s and `TemplateInstance`s.
 - **The child renders all of the tenant's gateway policy:** the
   `RequestAuthentication`, the three `EnvoyFilter`s, `Telemetry`, one `ALLOW`
-  per API (in the gateway's namespace), one backend lock per backend (in the
-  route's namespace), and the tenant's status ConfigMap `<request>-apis` in
+  per API (in the gateway's namespace), one backend lock per backend and one
+  waypoint per backend namespace (in the route's namespace, ADR-0007), and the
+  tenant's status ConfigMap `<request>-apis` in
   the gateway's namespace (APIs, routes that are not APIs, duplicates, host
   conflicts, refused knobs).
 - **The team's request keeps** the `Gateway`, its scaling ConfigMap, its

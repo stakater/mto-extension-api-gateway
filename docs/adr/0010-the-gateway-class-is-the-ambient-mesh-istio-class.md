@@ -14,9 +14,9 @@ Two Gateway API classes can run a gateway on OpenShift with Service Mesh 3:
   control plane and certificate authority (K1).
 
 The backend lock (ADR-0007) lets only the tenant gateway's mesh identity call
-an API backend. ztunnel checks that identity on the mTLS connection, so the
-gateway must have a workload certificate that the ambient mesh trusts (M4,
-M9).
+an API backend through its Service. The gateway reaches the backend over the
+ambient mesh's mTLS, so it must have a workload certificate that the ambient
+mesh trusts (M4, M9).
 
 ## Decision
 

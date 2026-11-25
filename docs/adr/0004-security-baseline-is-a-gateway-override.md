@@ -138,6 +138,12 @@ APIs.
 
 ## Alternatives
 
+- **An old issuer with keys written into the configuration and access by a
+  list of client IDs** (today's legacy mode, for a switched-off issuer whose
+  tokens carry no roles). Not supported: the customer is retiring that issuer.
+  An API that still accepts such tokens stays on its old gateway until its
+  callers use the identity provider's tokens (docs/migration.md).
+
 - **Kuadrant gateway-level `overrides` (`strategy: merge`) and a listener-level
   `defaults` deny (the first version of this ADR).** Not chosen with
   ADR-0003. It would make the baseline hold even against a route-level policy

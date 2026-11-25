@@ -54,7 +54,8 @@ flowchart TB
     allow[AuthorizationPolicy api.orders<br/>ALLOW host orders.team-a…, path /orders/v2, api.team-a.orders]
     apiti[TemplateInstance orders<br/>of api: host, path, backend]
     route[HTTPRoute api.orders<br/>annotation api: orders]
-    lock[AuthorizationPolicy api.orders.orders<br/>DENY all but api-gateway-istio on the API port]
+    lock[AuthorizationPolicy api.orders.orders<br/>DENY all but api-gateway-istio, open paths excepted]
+    wp[Waypoint api-gateway-waypoint<br/>enforces the lock for the Service]
     svc[Service orders]
     req -.->|instance of| tpl
     req -->|renders, strict| gwA
@@ -67,7 +68,8 @@ flowchart TB
     apiti -->|renders, strict| route
     route -->|parentRef| gwA
     route -->|backendRef| svc
-    lock -.->|guards pods of| svc
+    lock -.->|enforced by| wp
+    wp -.->|guards calls through| svc
   end
   floor -.->|selects the gateway label| podsA
   deny -.->|selects the gateway label| podsA
@@ -99,8 +101,8 @@ sequenceDiagram
   G->>R: count team-a / silver / shop
   R-->>G: 429 if over the limit
   G->>Z: /orders/v1 with x-sub, x-roles
-  Z->>B: mTLS from the api-gateway-istio identity
-  Note over Z,B: backend lock (DENY): any other identity, or none, is refused
+  Z->>B: mTLS from the api-gateway-istio identity (skips the waypoint)
+  Note over Z,B: any other caller of Service orders passes the waypoint: refused, except the open paths
   B-->>C: 200
 ```
 

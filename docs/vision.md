@@ -42,7 +42,7 @@ platform-owned filters, rendered per tenant by Template Operator.
 | Persona | Job to be done | What they get |
 |---|---|---|
 | **Platform team** | run API gateways safely for many teams, and upgrade them without a project per team | one chart for all tenants; one version bump upgrades every gateway; a security baseline that no tenant can switch off |
-| **API team** | publish an API without learning the gateway design | one `TemplateInstance` per API, with eight checked parameters; first-line troubleshooting with the familiar `401`, `403`, `429` |
+| **API team** | publish an API without learning the gateway design | one `TemplateInstance` per API, with checked parameters; first-line troubleshooting with the familiar `401`, `403`, `429` |
 | **Security and audit** | prove that every API checks the token and the caller's rights | the checks live in platform-owned policies that a route can't weaken; render checks fail on any wildcard or missing check |
 | **Red Hat platform owners** | stay on supported products through upgrades | Gateway API and Service Mesh 3 as designed; only three platform-owned `EnvoyFilter`s, tested on every Service Mesh upgrade, and the support caveat stated up front |
 

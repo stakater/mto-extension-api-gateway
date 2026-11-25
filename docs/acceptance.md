@@ -81,11 +81,15 @@ rendered for `team-core`'s `a-orders` is `api.team.a-orders`, and no rule
 rendered for tenant `team` matches a value that starts `api.team-a.`. `core` is
 refused `orders` (`403`) and allowed `a-orders` (`200`).
 
-**AC-ISO-5 — The backend answers only its tenant gateway.** *(L)* `intruder`
-and `outsider` calling Service `orders` directly are refused; the same request
-through `team-a`'s gateway, as `shop`, gets `200`. After a cluster admin adds
-an `ALLOW` policy for any source on `orders`' pods, `intruder` is still
-refused.
+**AC-ISO-5 — The backend answers only its tenant gateway, except the open
+paths.** *(L)* `intruder` calling Service `orders` on `/orders/v1` is refused
+by the waypoint (`403`); the same request through `team-a`'s gateway, as
+`shop`, gets `200`; `intruder` calling `/metrics` and `/healthz` on the
+Service gets the backend's answer; kubelet probes and the platform's
+monitoring keep working. After a cluster admin adds an `ALLOW` policy for any
+source on Service `orders`, `intruder` is still refused. A call from
+`intruder` to an `orders` pod's IP is recorded as the known limit (M21,
+Q21).
 
 **AC-ISO-6 — Tenants can't change or impersonate their gateway.** *(L)* As
 `alice`, each of these is refused, with the reason: creating a `Gateway`,
@@ -101,7 +105,34 @@ with a `valueFrom` parameter. Creating an `api` instance, and an
 
 **AC-ISO-7 — A backend the lock can't cover serves nothing.** *(R+L)* No
 allowed-API rule is rendered for `legacy` or `stray`; both are refused for
-every caller and listed as `invalid` and `outside-mesh`. `orders` serves.
+every caller and listed as `invalid` and `outside-mesh`. An API whose
+namespace has no `istio.io/use-waypoint` label is listed as `outside-mesh` and
+serves nothing. `orders` serves.
+
+**AC-EXT-1 — An API with a backend outside the cluster.** *(R+L)* The `api`
+instance `partner` sets `externalHost` to a lab host outside the mesh, with
+`tls: SIMPLE` and the lab CA in `tlsSecret`. `shop`, with a token for
+`api.team-a.partner`, gets the host's answer; the host saw its own name in
+`Host`, the rewritten path, `x-sub` and `x-roles`, and no `Authorization`
+header. A caller without the API's role gets `403`, and the rate limit
+applies. With a wrong CA in the Secret, the call fails, and the API is never
+served in plain text. With `tls: MUTUAL`, the host sees the gateway's client
+certificate. Render: the `ServiceEntry` and `DestinationRule` are in the
+gateway's namespace, the `ExternalName` Service in the instance's; the API is
+listed as `external`, with no lock.
+
+**AC-EXT-2 — Only the extension's external backends.** *(R)* An `api` instance
+that sets both `service` and `externalHost`, or neither, is `refused`. A route
+to an `ExternalName` Service written by hand serves nothing and is listed as
+`invalid`.
+
+**AC-ISO-11 — A team turns its backend lock off, unless the platform locks
+it.** *(R+L)* With `backendLock: "off"` on `stray`, no lock and no waypoint are
+rendered for it, the API serves, and `api-gateway-apis` lists it under
+`unlocked`. With `team-a` in `backendLock.lockedTenants`, the same parameter
+is refused with the reason in `api.stray`, and the API still serves nothing.
+A render check fails on an open path that isn't in the platform's list, or
+that uses a pattern.
 
 **AC-ISO-8 — Every listener denies by default.** *(R+L)* The root-namespace
 `ALLOW` that selects every tenant gateway has no rules; `plain-extra`, on the

@@ -79,10 +79,14 @@ the golden only after an intended change: `make golden`.
    `from: Selector` on `stakater.com/tenant`, a hostname under the tenant's
    name; never `from: All`. The only listener without a hostname is `entry`,
    for the shared-host prefixes the platform grants (ADR-0009).
-1. **Every API backend is locked to its tenant gateway** (ADR-0007) by a
-   `DENY` on its target ports, never an `ALLOW`. **Fail closed:** a backend
-   that can't be locked gets no allowed-API rule, so its route serves
-   nothing.
+1. **Every API backend is locked to its tenant gateway, unless its team turns
+   the lock off** (ADR-0007): a waypoint per backend namespace and a `DENY` on
+   the backend Service, never an `ALLOW`; only the platform's exact open paths
+   stay open. **Fail closed:** with the lock on, a backend that can't be locked
+   gets no allowed-API rule, so its route serves nothing. Calls to a pod's IP
+   bypass the waypoint, as today: a documented limit. A backend outside the
+   cluster (`externalHost`, ADR-0014) has no lock, as today; only the
+   extension's own `ExternalName` Service is accepted.
 1. **The gateway class is `istio`**, from the ambient mesh's own control
    plane, never `openshift-default` (K1).
 1. **Tenants create only `TemplateInstance`s** (ADR-0005, ADR-0008):
