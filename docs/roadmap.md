@@ -329,6 +329,15 @@ a rollback to the previous chart version on a cluster that serves traffic;
 both runs kept as evidence, and the tested versions written into
 [`support-matrix.md`](support-matrix.md) (#7). Satisfies **AC-OPS-1**, **AC-OPS-3**, **AC-OPS-4**.
 
+**Story G.28 — Staged upgrades** 📝 *Draft* — template generations (at most
+two per release), `rollout.default` and `rollout.canary` (tenants and APIs),
+a values schema that allows only the release's generations, the parent and
+the team-facing Templates rendering by generation, promote and roll back
+with values, and `gateway.meshRevision` for a mesh upgrade one tenant at a
+time; live: a canary API and a canary tenant on g2, promote, roll back, and
+the next release refused while g1 is named; no dropped requests (ADR-0015,
+issue #8). Satisfies **AC-OPS-4**, **AC-OPS-5**, **AC-OPS-6**.
+
 ---
 
 ## Phase 3 — Complete

@@ -112,6 +112,9 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `backendLock.publicPaths` | `/metrics`, `/health`, `/health/live`, `/health/ready`, `/healthz` | paths on a locked backend that anyone may call; exact paths, never a pattern (ADR-0007) | G.4 |
 | `backendLock.waypoint.autoscaling.minReplicas`, `.maxReplicas` | `3`, `5` | each backend namespace's waypoint, as today | G.4 |
 | `backendLock.lockedTenants` | `[]` | tenants whose teams may not turn a backend lock off (ADR-0007) | G.4 |
+| `rollout.default` | `g1` | the template generation every tenant and API uses (ADR-0015) | G.28 |
+| `rollout.canary.tenants`, `rollout.canary.apis` | `[]` | tenants, and APIs as `<tenant>.<api>`, on the next generation; the schema allows only the generations the release contains | G.28 |
+| `gateway.meshRevision.default`, `gateway.meshRevision.tenants` | empty (the mesh's default revision) | the Istio revision each tenant's gateway uses, rendered as the label `istio.io/rev`, for a mesh upgrade one tenant at a time (ADR-0015, M22) | G.28 |
 | `istio.rootNamespace` | `istio-system` | where the token floor and default deny live | G.2 |
 | `istio.trustDomain` | `cluster.local` | the trust domain in the gateway's principal for the backend lock | G.4 |
 | `headers.reserved` | the platform's list | header names a team can't map a claim to, always removed from callers | G.2, G.25 |

@@ -92,7 +92,9 @@ the golden only after an intended change: `make golden`.
 1. **Tenants create only `TemplateInstance`s** (ADR-0005, ADR-0008):
    admission refuses their `HTTPRoute`s.
 1. **Templates never use sync mode `off`** (T3): an upgrade must reach every
-   tenant.
+   tenant. **A published template generation never changes**: every Template
+   change goes into the next generation, a release holds at most two, and
+   object names stay the same across generations (ADR-0015).
 
 ## Public repository
 

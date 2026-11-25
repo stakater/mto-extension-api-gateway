@@ -391,9 +391,24 @@ domain, and two tenants' overlapping extra hostnames.
 **AC-OPS-3 — Upgrades keep the contract.** *(L)* The whole suite is green
 before and after a Service Mesh (Istio) minor upgrade, with no chart change.
 
-**AC-OPS-4 — One version bump upgrades every tenant.** *(L)* Bumping the
-bootstrap chart version re-renders every tenant's gateway and child within one
-sync, and the suite stays green.
+**AC-OPS-4 — A chart release changes nothing until the platform promotes.**
+*(L)* Installing a release with `[g1 g2]` and `rollout.default: g1` changes no
+tenant's objects. Setting `rollout.default: g2` re-renders every tenant's
+gateway and child within one sync, and the suite stays green.
+
+**AC-OPS-5 — A new generation reaches a canary first.** *(R+L)* With
+`rollout.canary.apis: [team-a.orders]`, only `orders`' route, rule, lock and
+rate limit entry come from g2; `payments` and `team-b` stay on g1. With
+`rollout.canary.tenants: [team-b]`, all of `team-b`'s objects come from g2.
+Removing the entry moves them back to g1. A values file that names a
+generation the release doesn't contain is refused by the schema, and the
+error names it. A client calling `orders` once per second through every
+change sees no `5xx` and no `403`.
+
+**AC-OPS-6 — Restarts and mesh moves drop no request.** *(L)* Under a steady
+load: a rolling restart of a tenant gateway and of a waypoint, and a move of
+`team-a`'s gateway to another Istio revision and back, each end with no failed
+request.
 
 ## Migration
 

@@ -39,8 +39,8 @@ an API team instantiates once per API.
 - **No custom resource and no controller.** The developer contract is one
   `TemplateInstance` per tenant for the gateway (ADR-0002) and one
   `TemplateInstance` of `api` per API (ADR-0005).
-- **Templates never use sync mode `off`**, so a chart upgrade or a tenant
-  change reaches every tenant (T3). The parent uses `revert`; `api-gateway`,
+- **Templates never use sync mode `off`**, so a promoted template generation
+  or a tenant change reaches every tenant it should (T3, ADR-0015). The parent uses `revert`; `api-gateway`,
   `api` and `api-gateway-policy` use `strict`, so a team can't edit or delete what
   it got.
 

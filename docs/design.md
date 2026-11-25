@@ -724,3 +724,33 @@ request.
   authenticated callers; the entry point limits the rest.
 - **Behaviour on kind and on OpenShift** is read from docs and source until
   G.19 and G.0 observe it.
+
+## 13. Upgrades: staged, with no downtime (ADR-0015)
+
+Every Template belongs to a generation (`g1`, `g2`, …). A chart release holds
+at most two: the current one and the next. The platform moves a canary first
+and everyone later, with values only:
+
+```yaml
+rollout:
+  default: g1
+  canary:
+    tenants: [team-x]          # all of team-x's objects on g2
+    apis: [team-a.orders]      # only orders' own objects on g2
+```
+
+| Step | Change | Effect |
+|---|---|---|
+| New chart release `[g1 g2]` | the chart | nothing changes for any tenant |
+| Canary | add an API or a tenant to `rollout.canary` | only those objects re-render, from g2 |
+| Promote | `rollout.default: g2` | everyone re-renders from g2 |
+| Roll back | remove from `rollout.canary`, or set `default` back | those objects re-render from g1 |
+| Next release `[g2 g3]` | the chart | refused while any value still names g1 |
+
+No downtime: object names stay the same across generations (updated in place,
+never deleted and created again); gateway and waypoint pods restart one at a
+time with at least two pods, a disruption budget and connection draining; a
+mesh upgrade moves one tenant's gateway at a time with the `istio.io/rev`
+label (`gateway.meshRevision`, M22); the rate limit service restarts one pod
+at a time; and the design stays closed in any apply order (§4). G.10 measures
+each switch.

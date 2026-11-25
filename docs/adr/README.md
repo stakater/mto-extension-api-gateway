@@ -28,6 +28,7 @@ Facts are cited to `../gateway-baseline.md` by row.
 | [0012](0012-teams-tune-their-gateway-with-validated-annotations.md) | Teams tune claim headers, correlation ID, access logs and trace headers with validated annotations on their request; no parameters | Proposed |
 | [0013](0013-gateway-policy-is-rendered-per-tenant.md) | One child `TemplateInstance` per tenant renders the gateway's policies, rules and locks; the team's request renders only the gateway | Proposed |
 | [0014](0014-an-api-backend-can-be-outside-the-cluster.md) | An API's backend can be a host outside the cluster, as in today's chart: `ServiceEntry`, `DestinationRule` (TLS `SIMPLE`, `MUTUAL` or `DISABLE`) and an `ExternalName` Service; no lock, no token forwarding | Proposed |
+| [0015](0015-staged-upgrades-with-two-template-generations.md) | Template changes ship as a new generation; a chart release holds at most two; the platform moves a canary API or tenant first, then everyone; rollback by values; no downtime | Proposed |
 
 All are Proposed until stories G.19 (kind) and G.0 (OpenShift) confirm the
 Istio, Service Mesh, Gateway API and Template Operator behaviour they rest on.
