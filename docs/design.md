@@ -599,8 +599,9 @@ metadata:
 
 - **Preflight** (bootstrap chart, at install and on upgrade): the GatewayClass
   exists; the Gateway API and Istio security, networking and telemetry CRDs
-  exist; at least one issuer is set, and every name in `defaultIssuers` and `tenantIssuers` is defined; the Redis address is set. A missing piece
-  fails the install and names it.
+  exist; at least one issuer is set, and every name in `defaultIssuers` and `tenantIssuers` is defined; the Redis address is set; each component is at
+  or above its floor in [`support-matrix.md`](support-matrix.md). A missing
+  piece fails the install and names it.
 - **Outputs** (Template Operator status outputs, as in the Enterprise
   extension): per tenant, the gateway's `Programmed` condition and the child's
   apply status (G.6).

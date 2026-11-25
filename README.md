@@ -14,6 +14,7 @@ security switch to get wrong.
 > **Status: design.** The requirements, ADRs and roadmap are proposed; the
 > first chart (story G.1) comes in its own pull request. Start with
 > [docs/vision.md](docs/vision.md), then [docs/design.md](docs/design.md).
+> Tested versions: [docs/support-matrix.md](docs/support-matrix.md).
 
 ## What a tenant gets
 

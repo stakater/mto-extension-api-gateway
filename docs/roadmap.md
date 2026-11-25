@@ -118,7 +118,8 @@ Operator's engine, and `missingkey=error`) replaces the helm `tpl` shim for
 every gotemplate; Istio CRDs (`security.istio.io`, `networking.istio.io`,
 `telemetry.istio.io`) vendored for `crd-validate`; fixtures for an empty
 LIST and for listed objects without annotations, each failing offline as it
-would live; golden unchanged.
+would live; a check that fails if a Template carries a Helm hook annotation,
+since Template Operator doesn't run hooks (#6); golden unchanged.
 
 **Story G.21 — Gateways are internal and labelled** 📝 *Draft*
 
@@ -296,7 +297,8 @@ certificates from the platform's issuer. Satisfies **AC-ISO-2** (live),
 **Story G.6 — Status and preflight** 📝 *Draft* — gateway `Programmed`, and
 refused knobs, in the request's status; namespaces outside the mesh and hosts
 outside the tenant's hostnames in `<request>-apis`; preflight for Service
-Mesh, the Gateway API and Istio CRDs, Template Operator, the issuer and Redis.
+Mesh, the Gateway API and Istio CRDs, Template Operator, the issuer and Redis,
+and for the version floors in [`support-matrix.md`](support-matrix.md).
 Satisfies **AC-OPS-2**.
 
 **Story G.7 — Lifecycle** 📝 *Draft* — route deleted, request deleted,
@@ -323,7 +325,9 @@ after the agreed period. Satisfies **AC-MIG-1**, **AC-MIG-2**, **AC-MIG-3**,
 
 **Story G.10 — Upgrades prove themselves** 📝 *Draft* — the live suite runs
 before and after a Service Mesh minor upgrade and after a chart version bump;
-both runs kept as evidence. Satisfies **AC-OPS-1**, **AC-OPS-3**, **AC-OPS-4**.
+a rollback to the previous chart version on a cluster that serves traffic;
+both runs kept as evidence, and the tested versions written into
+[`support-matrix.md`](support-matrix.md) (#7). Satisfies **AC-OPS-1**, **AC-OPS-3**, **AC-OPS-4**.
 
 ---
 
