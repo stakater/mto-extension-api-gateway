@@ -51,7 +51,12 @@ rollout:
       that generation's form.
     - An API's own objects (its route, its rule, its lock, its rate limit
       entry) follow the API's generation, so one API can move before the rest
-      of its tenant.
+      of its tenant. So that this works, every Template in a release can
+      render the per-API objects of both generations the release holds: the
+      tenant's child renders each API's objects in that API's generation,
+      inside its own tenant-wide objects (the rate limit filter holds each
+      API's entry in the API's generation). A generation's output never
+      changes; a release only adds the next generation's forms.
 - **Promote and roll back with values only.** When the canary works, the
   platform sets `rollout.default` to the next generation. To roll back, it
   takes a tenant or an API out of the canary list. Neither needs a new chart
@@ -72,8 +77,9 @@ rollout:
        tenant's gateway to the new revision first, with the `istio.io/rev`
        label rendered from a platform value (`gateway.meshRevision`), and
        moves it back the same way (M22).
-    1. The rate limit service restarts one pod at a time; while it is
-       unavailable, the platform's fail-open choice keeps traffic flowing.
+    1. The rate limit service restarts one pod at a time; if it is ever
+       unavailable, traffic keeps flowing when the platform chose fail open
+       (`rateLimit.failureModeAllow`, decided in G.5).
     1. The design stays closed in any apply order (ADR-0004), so a switch
        never opens a gap.
 
@@ -89,7 +95,7 @@ rollout:
 - A canary API shares its tenant's gateway, filters and token check with the
   APIs on the current generation; only its own objects differ. A change to a
   tenant-wide object is staged per tenant.
-- G.10 measures zero dropped requests for every kind of switch.
+- G.28 measures zero dropped requests for every kind of switch.
 
 ## Alternatives
 

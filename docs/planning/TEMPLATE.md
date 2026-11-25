@@ -18,7 +18,7 @@ doc is implemented). Acceptance: {AC ids}.
 ## Governing constraints
 
 {ADRs and CLAUDE.md invariants by number, one clause each on how they bite
-here. Platform facts by `gateway-baseline.md` row, e.g. "K6: a Gateway-level override cannot be weakened by a route-level policy".}
+here. Platform facts by `gateway-baseline.md` row, e.g. "M12: an `ALLOW` with no rules refuses every request that no other `ALLOW` allows".}
 
 ## Design
 

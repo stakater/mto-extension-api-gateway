@@ -50,7 +50,7 @@ What we learned on 2026-11-17:
 
 | Requirement | Why |
 |---|---|
-| Check the caller's JWT: signature, issuer, audience, expiry | only callers with a token from the platform's issuer reach an API |
+| Check the caller's JWT: signature, issuer, audience, expiry | only callers with a token from one of the API's issuers reach an API |
 | Check the allowed-APIs claim against the API | a caller uses only the APIs it was granted (ADR-0006) |
 | Set `x-sub` and `x-roles` from the token, never from the caller | the backend can trust who called |
 | Limit calls per caller and tier, shared across gateway pods | protect backends; service levels per caller |

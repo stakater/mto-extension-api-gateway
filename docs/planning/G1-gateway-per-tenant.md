@@ -3,6 +3,12 @@
 Story: `docs/roadmap.md` G.1 (👍 Approved by a code owner on 2026-11-16, built
 before G.0 by decision; see "Why"). Acceptance: AC-ISO-1, AC-ISO-2, AC-ISO-9,
 AC-LIFE-1, AC-LIFE-5 (render parts; live parts wait for G.0), AC-R-1, AC-R-5.
+The code is on the branch `feat/g1-bootstrap-chart` (PR #14).
+
+Note (2026-11-25): this capsule records G.1 as planned. Since then, ADR-0003
+allows three platform-owned `EnvoyFilter`s (G.1 renders none, which is still
+right), the per-tenant chart was rejected for a per-tenant child Template
+(ADR-0013), and API routes and rules are stories G.26 and G.24, not G.3.
 
 ## Why (one paragraph)
 
@@ -33,7 +39,7 @@ requests one, and it runs in the team's own namespace (ADR-0002).
   invalid, overlaps the base domain, or overlaps another tenant's is refused
   and listed.
 - ADR-0003: no `EnvoyFilter`, `WasmPlugin` or `TrafficExtension` rendered.
-- Gateway class `istio` only (K1, design §9).
+- Gateway class `istio` only (K1, design §10).
 - Names (design §6): a request name is a DNS label ≤ 48; a tenant name a DNS
   label ≤ 63.
 - Template Operator facts used, read in its docs and source, not live: object
@@ -127,6 +133,6 @@ publishing (with the first release, after G.0).
 ## Done means
 
 The roadmap Done line; `make verify` green with `make charts` inside it, output
-seen; the golden regenerated only on purpose; design §2, §3.1, §6 and §7 match
+seen; the golden regenerated only on purpose; design §2, §3.2, §6 and §7 match
 the chart; story G.1 marked ✅ with this doc linked. The render-proven
 scenarios get their live proof in G.0.

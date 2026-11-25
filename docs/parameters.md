@@ -7,7 +7,7 @@ to one of four places:
 | Place | Who sets it | How |
 |---|---|---|
 | **Platform value** | the platform team | a value of the bootstrap chart, once per cluster; some are per tenant |
-| **Team input** | the API team | the standard fields of an `HTTPRoute`, and one annotation. The gateway request (`TemplateInstance` of `api-gateway`) has **no parameters**: the team chooses its namespace and name, and may set a few validated annotations (§3, ADR-0012) |
+| **Team input** | the API team | the parameters of an `api` `TemplateInstance` (§3, ADR-0005). The gateway request (`TemplateInstance` of `api-gateway`) has **no parameters**: the team chooses its namespace and name, and may set a few validated annotations (§3, ADR-0012) |
 | **Derived** | nobody | the chart computes it from the tenant, the request and the route |
 | **Fixed** | nobody | always on, in the chart; no value turns it off (vision principle 2) |
 
@@ -21,22 +21,22 @@ Names of planned values are proposals. Each story fixes the names it builds.
 |---|---|---|---|
 | `gateway.name` | the request's name: `Gateway` `<request>` | team input (the name only) | G.1 ✅ |
 | `gateway.namespace` | the request's namespace | team input | G.1 ✅ |
-| `hosts.external` | `HTTPRoute` `spec.hostnames`. It attaches only under `*.<tenant>.<base domain>` or a host name the platform granted to the tenant | team input, bounded by platform values | G.1 ✅, G.3 |
-| `gateway.pathPrefix` (the published path) | `HTTPRoute` `rules[].matches[].path` | team input | G.3 |
-| `backend.internal.service`, `backend.internal.port` | `HTTPRoute` `rules[].backendRefs[]` `name`, `port` | team input | G.3 |
-| `backend.internal.pathPrefix` (the backend's path) | `HTTPRoute` `URLRewrite` filter, `ReplacePrefixMatch` | team input | G.3 |
-| `backend.internal.namespace` | none. The backend is in the route's namespace, so no `ReferenceGrant` is needed | — | G.3 |
+| `hosts.external` | the `api` instance's `host`. It is accepted only under `*.<tenant>.<base domain>`, a host name the platform granted to the tenant, or a shared host with a granted prefix (ADR-0009) | team input, bounded by platform values | G.1 ✅, G.26 |
+| `gateway.pathPrefix` (the published path) | the `api` instance's `path` | team input | G.26 |
+| `backend.internal.service`, `backend.internal.port` | the `api` instance's `service`, `port` | team input | G.26 |
+| `backend.internal.pathPrefix` (the backend's path) | the `api` instance's `rewrite`; the rendered route uses `ReplacePrefixMatch` | team input | G.26 |
+| `backend.internal.namespace` | none. The backend is in the `api` instance's namespace, so no `ReferenceGrant` is needed | — | G.26 |
 | `backend.external.host`, `.port`, `.pathPrefix` | the `api` instance's `externalHost`, `port`, `rewrite`; the `ExternalName` Service and the `Host` rewrite are rendered (ADR-0014) | team input | G.16 |
 | `backend.external.tls.mode`, `.sni`, `.credentialName` | the `api` instance's `tls`, `tlsSni`, `tlsSecret` (a Secret in the gateway's namespace); the `ServiceEntry` and `DestinationRule` are rendered (ADR-0014) | team input | G.16 |
-| `auth.jwt.allowedApis` (free text) | the rule `api.<tenant>.<api>`, closed; the team gives only the API name, as the name of its `api` instance (ADR-0005) | derived | G.3 |
+| `auth.jwt.allowedApis` (free text) | the rule `api.<tenant>.<api>`, closed; the team gives only the API name, as the name of its `api` instance (ADR-0005) | derived | G.24 |
 | `hosts.internalDomain` (a second, internal host) | open: a second base domain on its own listener, or a decision of the entry point (Q10) | platform value | G.18 |
 
-### Security switches today: removed
+### Security switches today: removed, or per API within platform bounds
 
 | Today | In this extension | Place | Story |
 |---|---|---|---|
 | `auth.enabled` | the token floor, the default deny and the allowed-API rules are always rendered (ADR-0004) | fixed | G.2 |
-| `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003) | fixed | G.5 |
+| `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003); an API's limit is the `api` instance's `rateLimit` parameter (ADR-0004) | team, within platform bounds | G.5 |
 | `security.allowGatewayAccessOnly`, `security.allowDirectBackendAccess` | the `api` instance's `backendLock: "on"` (default) or `"off"`; the platform can lock a tenant (ADR-0007) | team, within platform bounds | G.4 |
 | `security.waypoint.create`, `security.waypoint.name`, `.autoscaling` | the child renders one waypoint `api-gateway-waypoint` per namespace with a locked API, autoscaled with platform values (ADR-0007) | platform value | G.4 |
 | `security.publicPaths` | `backendLock.publicPaths`, a platform list of exact paths | platform value | G.4 |
@@ -45,8 +45,8 @@ Names of planned values are proposals. Each story fixes the names it builds.
 
 | Today | In this extension | Place | Story |
 |---|---|---|---|
-| `auth.jwt.realm` | `auth.issuers`, with `defaultIssuers` and `tenantIssuers`: one issuer, several, or one per tenant (ADR-0004) | platform value | G.2 |
-| `auth.jwt.audiences` | `auth.audience` | platform value | G.2 |
+| `auth.jwt.realm` | `auth.issuers`, with `auth.defaultIssuers` and `auth.tenantIssuers`: one issuer, several, one per tenant, or one per API (ADR-0004) | platform value | G.2, G.13 |
+| `auth.jwt.audiences` | `auth.issuers.<name>.audiences`, per issuer | platform value | G.2 |
 | `auth.jwt.forwardClaims` (`azp` → `x-sub`, `allowed_apis` → `x-roles`) | `auth.headers`; the gateway replaces any value the caller sent | platform value | G.2 |
 
 ### What the chart or the platform sets today
@@ -59,10 +59,10 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | rate limit tiers, in the platform's rate limit chart | `rateLimit.tiers`; the caller's tier from its role for the API (ADR-0003) | platform value | G.5 |
 | rate limit service and its store | a rate limit service that speaks Envoy's rate limit API, with Redis | platform | G.5 |
 | `EnvoyFilter` that strips caller headers | a platform-owned header filter, rendered with every tenant gateway (ADR-0003) | fixed | G.2 |
-| `EnvoyFilter` for the rate limit (with Lua) | a platform-owned rate limit filter with no Lua; tier and caller read as plain claims (ADR-0003) | fixed | G.5 |
-| `EnvoyFilter` for a correlation ID (some APIs) | open: Envoy's own `x-request-id` may be enough (Q11) | platform value, if any | G.0 |
-| `Telemetry`: log format, tracing | per-tenant observability | platform value | G.14 |
-| a log format for one team | per-tenant observability | platform value | G.14 |
+| `EnvoyFilter` for the rate limit (with Lua) | a platform-owned rate limit filter with no Lua; the tier from the caller's role for the API by a CEL expression (exact text), the caller from `azp` (ADR-0003, M20) | fixed | G.5 |
+| `EnvoyFilter` for a correlation ID (some APIs) | the `correlation-id` knob, platform-owned filter 3; the header name is `correlationId.header` (ADR-0003, ADR-0012) | team annotation | G.25 |
+| `Telemetry`: log format, tracing | the `access-log` and `trace-headers` knobs, from the platform's list (ADR-0012); platform-wide observability stays G.14 | team annotation, within the platform's list | G.25 |
+| a log format for one team | the `access-log` knob, from the platform's list (ADR-0012) | team annotation, within the platform's list | G.25 |
 | `RequestAuthentication` (issuer, keys, audience) | the same kind, with the Istio token floor, from platform values | fixed, from platform values | G.2 |
 | `ReferenceGrant` | not rendered | — | — |
 | the chart version, one copy per team | the bootstrap chart's version; one upgrade for all | platform | — |
@@ -73,11 +73,11 @@ Names of planned values are proposals. Each story fixes the names it builds.
 |---|---|---|---|
 | mesh labels on the namespaces | stay in the `Tenant`; the extension reports a namespace outside the mesh | platform, in the Multi-Tenant Operator | G.6 |
 | the waypoint label on the backend namespace | stays: `istio.io/use-waypoint`, set through the `Tenant`; the extension reports a namespace without it | platform, in the Multi-Tenant Operator | G.4 |
-| the identity provider's client and role per API | manual; the role is `api.<tenant>.<api>` | platform, in RHBK | G.11 |
+| the identity provider's client and roles per API | manual; one role per tier, `api.<tenant>.<api>.<tier>` | platform, in RHBK | G.11 |
 
 ## 2. The platform's values (bootstrap chart)
 
-### Built (G.1)
+### Built in G.1 (on the code branch, PR #14)
 
 | Value | Default | Meaning |
 |---|---|---|
@@ -85,7 +85,6 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `gateway.className` | `istio` | the only accepted value |
 | `gateway.port` | `443` | listener port |
 | `gateway.extraHostnames` | `{}` | **per tenant**: extra host names, each on its own listener |
-| `gateway.sharedHosts` | `[]` | hosts that several tenants share, each with the path prefixes granted **per tenant**; each prefix gets a reencrypt OpenShift `Route` to the tenant's gateway (ADR-0009) |
 | `gateway.autoscaling.minReplicas`, `.maxReplicas`, `.targetCPUUtilizationPercentage` | `2`, `5`, `80` | the gateway's autoscaler; the minimum is at least 2 |
 | `gateway.podDisruptionBudget.minAvailable` | `1` | below the minimum replicas, so a node drain can evict a pod |
 | `gateway.tls.certManager.issuerRef` | `ClusterIssuer`, no name | with a name, one `Certificate` per listener |
@@ -98,12 +97,13 @@ Names of planned values are proposals. Each story fixes the names it builds.
 
 | Value | Proposed default | Meaning | Story |
 |---|---|---|---|
-| `auth.issuers.<name>.url` | none, at least one issuer required | a token issuer the platform trusts; the token floor accepts the principals of every issuer | G.2 |
-| `auth.issuers.<name>.audiences` | none, required | the audiences a token of this issuer must carry | G.2 |
-| `auth.issuers.<name>.jwksUri` | empty | the key set's URL (`RequestAuthentication` `jwksUri`), when the issuer's host is not reachable from the cluster; the issuer still pins `iss` | G.2 |
-| `auth.issuers.<name>.tenant` | empty | the tenant that runs this issuer; it may then be used only by that tenant | G.2 |
-| `auth.defaultIssuers` | none, required unless every tenant has a list | the issuers of every tenant without its own list: one or many | G.2 |
-| `auth.tenantIssuers` | `{}` | **per tenant**: its default issuers, instead of `defaultIssuers`; an API may also name issuers registered with `tenant: <its tenant>` (ADR-0004) | G.13 |
+| `gateway.sharedHosts` | `[]` | hosts that several tenants share, each with the path prefixes granted **per tenant**; each prefix gets a reencrypt OpenShift `Route` to the tenant's gateway, which gets the `entry` listener (ADR-0009) | G.18 |
+| `auth.issuers.<name>.url` | none, at least one issuer required | a token issuer the platform trusts; the token floor accepts the principals of every issuer | G.2, G.13 |
+| `auth.issuers.<name>.audiences` | none, required | the audiences a token of this issuer must carry | G.2, G.13 |
+| `auth.issuers.<name>.jwksUri` | empty | the key set's URL (`RequestAuthentication` `jwksUri`), when the issuer's host is not reachable from the cluster; the issuer still pins `iss` | G.2, G.13 |
+| `auth.issuers.<name>.tenant` | empty | the tenant that runs this issuer; it may then be used only by that tenant | G.13 |
+| `auth.defaultIssuers` | none, required unless every tenant has a list | the issuers of every tenant without its own list: one or many | G.2, G.13 |
+| `auth.tenantIssuers` | `{}` | **per tenant**: its default issuers, instead of `auth.defaultIssuers`; an API may also name issuers registered with `tenant: <its tenant>` (ADR-0004) | G.13 |
 | `rateLimit.failureModeAllow` | to decide in G.5 | whether calls pass when the rate limit service is down; documented as a limit (ADR-0003) | G.5 |
 | `rateLimit.redis.address`, `rateLimit.redis.passwordSecret` | none, required with the rate limit | the platform's Redis for the counters | G.5 |
 | `rateLimit.unlimitedTenants` | `[]` | tenants the platform exempts from the rate limit; their filter stays (ADR-0004) | G.5 |
@@ -126,7 +126,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `api.rulePrefix` | `api` | the first segment of `api.<tenant>.<api>` | G.24 |
 | `migration.legacyRoles` | `{}` | **per API**, `<tenant>.<api>: <old role name>`: the API also accepts `<old>-<tier>` roles, so callers' tokens don't change when it moves (ADR-0006) | G.9 |
 | `migration.oldGateways` | `{}` | **per API**, `<tenant>.<api>: <old gateway's service account principal>`: the API's lock also lets the old gateway pass while both run (ADR-0007, docs/migration.md) | G.9 |
-| `rateLimit.tiers` | `gold` 1000/s, `silver` 50/s, `bronze` 10/s | the tiers and their rates | G.5 |
+| `rateLimit.tiers` | `gold` 100/s, `silver` 50/s, `bronze` 10/s | the tiers and their rates | G.5 |
 | `rateLimit.defaultTier` | `bronze` | the catch-all for a missing or unknown tier; never "no limit" | G.5 |
 
 No platform value is a switch for the token check or the header replacement.
@@ -156,9 +156,9 @@ The first proposal's six parameters map like this:
 | `backendService` | `service` and `port` |
 | `backendPath` | `rewrite` |
 | `exposedPath` | `path`, or exact `operations` |
-| `externalHost` | `host` |
+| `externalHost` | `host` (the first proposal's `externalHost` was the published host, not today's `externalHost` parameter for a backend outside the cluster, ADR-0014) |
 
-Between environments, a route changes only its namespace and its host name
+Between environments, an `api` instance changes only its namespace and its host name
 (`orders.team-a…`, `orders-test.team-a…`). The gateway request is made once
 per tenant.
 
@@ -169,7 +169,7 @@ per tenant.
 | the tenant | the request's or the route's namespace, through `tenantOf` (the namespace label) |
 | the gateway's name and every gateway-level object name | the request's name |
 | the listener host name `*.<tenant>.<base domain>` | the tenant and `gateway.baseDomain` |
-| the allowed-API rule `api.<tenant>.<api>` and the tenant floor `api.<tenant>.` | the prefix, the tenant, the annotation |
+| the allowed-API rule `api.<tenant>.<api>` | the prefix, the tenant, the `api` instance's name |
 | the backend lock's principal `cluster.local/ns/<namespace>/sa/<request>-istio` | the gateway's namespace and name |
 | the backend lock's target | the backend `Service` (the policy's `targetRefs`), enforced by the namespace's waypoint |
 | which request owns the tenant's gateway | the oldest valid request (`owner`) |
@@ -180,14 +180,16 @@ The token floor and the issuer pin; the default deny; the closed allowed-API
 rule per API; the header replacement; HTTPS
 with TLS terminated at the gateway; `allowedRoutes` from the tenant's
 namespaces only, `HTTPRoute` only; sync mode `strict` for the team-facing
-Template; no `EnvoyFilter` but the two allowlisted platform filters, and no
+Template; no `EnvoyFilter` but the three allowlisted platform filters, and no
 Lua (ADR-0003, ADR-0004).
 
 ## 6. Open
 
 - **Per-tenant platform values.** `gateway.extraHostnames`, the prefixes in
-  `gateway.sharedHosts`, `auth.tenantIssuers`, `rateLimit.unlimitedTenants` and
-  `rateLimit.unlimitedApis` are per tenant. A per-tenant autoscaling range
+  `gateway.sharedHosts`, `auth.tenantIssuers`, `rateLimit.unlimitedTenants`,
+  `rateLimit.unlimitedApis`, `rateLimit.lockedTenants`,
+  `backendLock.lockedTenants`, `rollout.canary.tenants` and
+  `gateway.meshRevision.tenants` are per tenant. A per-tenant autoscaling range
   or tier set is not designed. Add it when a tenant needs it, as a platform
   value, never as a team input.
 - **The internal host name.** Today an API has a second, internal host. G.18

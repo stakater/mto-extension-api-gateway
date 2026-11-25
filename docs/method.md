@@ -42,7 +42,7 @@ fix is only done when a regression test pins the behaviour it fixed.
 | Approval gate | human in the loop | 📝 Draft → 👍 Approved only by a human | `.github/CODEOWNERS` owns `docs/roadmap.md` and `docs/adr/`; branch protection requires a code owner's review |
 | PRs trace to a story | traceability | every PR cites its story code | PR workflow: `check_method.py pr-body` fails without a known code or `No story: <reason>` |
 | Immutable decisions | ADRs (Nygard) | `docs/adr/`, superseded never edited | PR workflow: `check_method.py adr-diff` fails if an Accepted ADR changes beyond `Superseded by ADR-NNNN`; `make method` checks status values and the index |
-| Test first | TDD (Beck) | a failing render test (golden, schema, security-baseline check) or acceptance check before the change | `make charts` in `make verify`: the render harness (golden, emission, listener, CRD validation, …) with its guards mutation-tested; review for test-first order |
+| Test first | TDD (Beck) | a failing render test (golden, schema, security-baseline check) or acceptance check before the change | `make charts` in `make verify` (on the code branch, from G.1): the render harness (golden, emission, listener, CRD validation, …) with its guards mutation-tested; review for test-first order |
 | Green before done | Definition of Done | `make verify` green, output seen | `make verify` locally; the same target in CI on every PR |
 | Docs move with the code | docs as source of truth | a change that leaves `docs/` stale is unfinished | `make lint` (markdownlint) and `make links` (every relative link resolves); review |
 | Facts before design | evidence over inference | product behaviour cited to `gateway-baseline.md` rows; unknowns marked VERIFY | review; G.0 |
@@ -112,7 +112,7 @@ regression tests rather than personas signing off.
 ## Running the checks
 
 ```sh
-make verify   # lint + links + method + test: the Definition of Done gate
+make verify   # lint + links + method + test (+ charts on the code branch, from G.1): the Definition of Done gate
 make method   # roadmap, planning docs and ADR rules only
 python3 hack/check_method.py adr-diff --base origin/main   # what CI runs on a PR
 ```

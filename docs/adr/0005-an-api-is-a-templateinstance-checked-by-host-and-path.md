@@ -67,10 +67,15 @@ spec:
 | `service` | yes, unless `externalHost` | — | a DNS label: a `Service` in the instance's namespace |
 | `port` | yes | — | 1 to 65535 |
 | `operations` | no | every path under `path` | `METHOD /exact/path`, comma-separated, at most 10; each path under `path`; methods `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` |
-| `issuers` | no | the tenant's default issuers | names of issuers the platform registered, comma-separated: from `defaultIssuers`, the tenant's `tenantIssuers`, or registered for the tenant (ADR-0004) |
+| `issuers` | no | the tenant's default issuers | names of issuers the platform registered, comma-separated: from `auth.defaultIssuers`, the tenant's `auth.tenantIssuers`, or registered for the tenant (ADR-0004) |
 | `rateLimit` | no | `"on"` | `"on"` or `"off"`; `"off"` is refused in a tenant the platform locks (ADR-0004) |
 | `backendLock` | no | `"on"` | `"on"` or `"off"`; `"off"` is refused in a tenant the platform locks (ADR-0007) |
 | `externalHost`, `tls`, `tlsSni`, `tlsSecret` | for a backend outside the cluster | — | instead of `service`; as in today's chart (ADR-0014) |
+
+A path is **under** a prefix when it equals the prefix or starts with the
+prefix followed by `/`, segment by segment as Gateway API matches (A6):
+`/orders-v2/v1` is under `/orders-v2`, not under `/orders`. Every "under" in
+these checks, and in ADR-0009, means this.
 
 - **The instance renders the route.** In its namespace, with `sync: strict`,
   it renders the `HTTPRoute` `api.<api>`: `parentRefs` to the tenant's

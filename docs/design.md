@@ -1,11 +1,13 @@
 # Design
 
-**Status:** proposed; G.1 is built, the other stories are Draft. Baseline:
+**Status:** proposed; G.1 is built on the code branch (PR #14), the other
+stories are Draft. Baseline:
 OpenShift Service Mesh 3 in ambient mode (upstream Istio on the kind lab),
 Gateway API v1, Template Operator v2 (versions in `gateway-baseline.md`).
 Facts are cited to `gateway-baseline.md` by row (e.g. **M6**); decisions to
-ADRs. Open questions are **Q1–Q15** in the baseline, owned by stories G.19
-(kind) and G.0 (OpenShift).
+ADRs. Open questions are **Q1–Q22** in the baseline (Q1, Q3 and Q13–Q15
+apply only to the Kuadrant alternative), owned by stories G.19 (kind) and G.0
+(OpenShift).
 
 The extension reuses the shape of `mto-extension-vault-enterprise`, which is
 built and tested: a bootstrap chart, a child `TemplateInstance` per tenant
@@ -20,8 +22,9 @@ caller headers set from the token, rate limit tiers, and a lock that makes the
 gateway the only way to the backend. A team asks for its gateway with one
 `TemplateInstance` of the platform's `api-gateway` Template, in the namespace
 where the gateway should run, and tunes a few non-security settings with
-annotations on it. Then it publishes each API with a standard `HTTPRoute`, on
-its own host, and one annotation. Non-goals: see `vision.md`.
+annotations on it. Then it publishes each API with one `TemplateInstance` of
+`api` (host, path, backend), and APIs can share a host by path (ADR-0005).
+Non-goals: see `vision.md`.
 
 ## 2. Architecture
 
@@ -30,7 +33,7 @@ One Helm chart, rendered once per cluster, and Template Operator v2 objects
 
 | Piece | Created | Renders |
 |---|---|---|
-| `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm, in the platform's namespace `mto-api-gateways` | the parent `Template` and `TemplateInstance`, the child Template `api-gateway-policy`, the token floor and default deny in the Istio root namespace (ADR-0004), the rate limit service (ADR-0003), the admission policy (ADR-0008) |
+| `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm, in the platform's namespace `mto-api-gateways` | the parent `Template` and `TemplateInstance`, the child Template `api-gateway-policy` (one per template generation in the release, `api-gateway-policy-g1`, ADR-0015), the token floor and default deny in the Istio root namespace (ADR-0004), the rate limit service (ADR-0003), the admission policy (ADR-0008) |
 | The parent `TemplateInstance` | by the chart | the team-facing **`api-gateway` and `api` Templates**, the skipped-tenants ConfigMap, and **one child `TemplateInstance` per tenant that has a gateway** (ADR-0013) |
 | A `TemplateInstance` of `api-gateway` | by the team, in the tenant namespace where its gateway should run; no parameters; optional knob annotations (ADR-0012) | **in its own namespace**: `Gateway` `<request>`, its settings ConfigMap, its certificates, and the request's status ConfigMap |
 | A `TemplateInstance` of `api` | by the team, one per API, in the backend's namespace; checked parameters (ADR-0005) | **in its own namespace**: the API's `HTTPRoute` `api.<api>` and its status ConfigMap `api.<api>` |
@@ -163,11 +166,11 @@ metadata:
   name: api-gateway
   namespace: team-a-dev
   labels: { stakater.com/tenant: team-a }
+  annotations: { networking.istio.io/service-type: ClusterIP }   # on the Gateway itself (M13)
 spec:
   gatewayClassName: istio
   infrastructure:
     labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/gateway: "true" }
-    annotations: { networking.istio.io/service-type: ClusterIP }
     parametersRef: { group: "", kind: ConfigMap, name: api-gateway-infra }
   listeners:
     - name: tenant
@@ -347,13 +350,16 @@ spec:
 | `backendLock` | no | `"on"` (default) or `"off"`; with `"off"` the backend checks the caller itself; refused when the platform locks the tenant (ADR-0007) |
 | `externalHost`, `tls`, `tlsSni`, `tlsSecret` | for a backend outside the cluster | instead of `service`: the host, TLS `SIMPLE` (default), `MUTUAL` or `DISABLE`, the SNI (default the host), and a Secret in the gateway's namespace with `ca.crt` (and `tls.crt`, `tls.key` for `MUTUAL`), as in today's chart (ADR-0014) |
 
+"Under" a prefix means segment by segment (ADR-0005): `/orders-v2/v1` is
+under `/orders-v2`, not under `/orders`.
+
 It renders, in `team-a-dev`, the `HTTPRoute` and the ConfigMap `api.orders`
 (`status: ok` with the URL and the rule, or `status: refused` with the
 reason). An invalid parameter, or a tenant with no gateway, renders no route.
 
 For a backend outside the cluster (ADR-0014), the instance sets
 `externalHost` instead of `service`, and also renders the `ExternalName`
-Service `api.<api>.external`; the route points to it and rewrites the `Host`
+Service `api-<api>-external`; the route points to it and rewrites the `Host`
 header to the external host. The tenant's child renders, in the gateway's
 namespace, the `ServiceEntry` and the `DestinationRule` `api.<api>.external`
 (TLS mode, SNI, the Secret), as today's chart does:
@@ -466,8 +472,8 @@ Every request on a tenant gateway passes, in order:
    platform's issuers: `403`. Holds whatever else exists. A token from an
    issuer that is not the tenant's is not validated by its gateway, so it
    fails here too (Q18).
-1. **Allowed-API rule** (per-API `ALLOW`): the request's host belongs to an
-   API, the allowed-APIs claim names that API (closed), and `azp` and every
+1. **Allowed-API rule** (per-API `ALLOW`): the request's host and path belong
+   to an API, the allowed-APIs claim names that API (closed), and `azp` and every
    mapped claim are present. Otherwise the default deny: `403`.
 1. **Headers:** `x-sub`, `x-roles` and the team's extras set from the token.
 1. **Rate limit** (platform filter): the caller's tier limit, counted per
@@ -486,13 +492,14 @@ The **render check** (`hack/`, in `make verify`) fails when, for any fixture:
 - an `EnvoyFilter` is not one of the three allowlisted shapes, selects more
   than one gateway, matches a generated name, or contains Lua; or any rendered
   object is a `WasmPlugin` or `TrafficExtension` (AC-R-1);
-- a per-API `ALLOW` has no hosts, a wildcard host, an issuer that is not its tenant's, a rule not
+- a per-API `ALLOW` has no hosts, a wildcard host, an issuer that is not one of the API's, a rule not
   derived from the tenant and the API name or not closed, or no `azp`
   condition (AC-R-4, AC-R-6);
 - an allowed-API rule is rendered for a route with a backend that can't be
   locked (with the lock on) or a host it doesn't own; or a backend lock
   opens a path that isn't in the platform's list, or uses a pattern;
-- a listener allows routes `from: All` or `Same`, or has no hostname (AC-R-5);
+- a listener allows routes `from: All` or `Same`, or has no hostname, except
+  `entry` for a tenant with shared-host prefixes (AC-R-5);
 - a gateway is not `ClusterIP` or lacks the gateway label (AC-R-7).
 
 Every guard in the check has a mutation test, as in the Enterprise harness.
@@ -521,6 +528,7 @@ G.19 tests a missing claim and a claim that is a single string (Q4).
 | Per-request objects | `<request>-infra`, `<request>-tls`, `<request>-tls-extra-<n>`, `<request>-status` | request ≤ 48, so the longest stays ≤ 63 |
 | Per-tenant objects (child) | `<request>-jwt`, `<request>-strip-headers`, `<request>-ratelimit`, `<request>-correlation-id`, `<request>-telemetry`, `<request>-apis` | ≤ 63 |
 | The child `TemplateInstance` | `api-gateway-policy-<tenant>`, in `mto-api-gateways` | tenant ≤ 63; the parent shortens with a hash when needed |
+| The child Template | `api-gateway-policy-<generation>` (`api-gateway-policy-g1`), at most two in a release; the team-facing `api-gateway` and `api` keep their names (ADR-0015) | fixed |
 | Per-API objects | `HTTPRoute` and ConfigMap `api.<api>` (the API's namespace, from the `api` instance); `api.<api>` (gateway's namespace), `api.<api>.<service>` (route's namespace): dot-joined, so they never meet a request's hyphen-joined names | API name + Service name ≤ 240 |
 | Root-namespace objects | `mto-api-gateway-token-floor`, `mto-api-gateway-default-deny` | fixed |
 | Hostname | `*.<tenant>.<base domain>`; an API's host under it or a granted host; APIs share a host by path (ADR-0005) | DNS limits: label ≤ 63, name ≤ 253 |
@@ -548,14 +556,14 @@ The tenant's child renders `<request>-apis` in the gateway's namespace:
 | Key | Lists |
 |---|---|
 | `apis` | each API: route, hosts, backend, the rule `api.<tenant>.<api>` |
-| `not-apis` | routes attached to the tenant gateway without the annotation (they serve nothing) |
+| `not-apis` | routes attached to the tenant gateway without the annotation, written by an admin or before admission (they serve nothing) |
 | `duplicates` | `api` instances that reuse an API name in the tenant: the oldest keeps the API, later ones are skipped |
 | `path-conflicts` | APIs on one host whose paths overlap (one equals, or is a segment prefix of, the other), and a route that is not an API on an API's host and path: none of them serves (ADR-0005) |
 | `invalid` | a backend that is not a `Service` with a selector and numeric target ports in the route's namespace, or an `ExternalName` that the extension didn't render (ADR-0014) |
-| `outside-mesh` | a route whose namespace lacks the mesh labels (M5), or, with the lock on, a waypoint (`istio.io/use-waypoint`): the route serves nothing |
+| `outside-mesh` | with the lock on, a route whose namespace lacks the mesh labels (M5) or a waypoint (`istio.io/use-waypoint`): the route serves nothing. With the lock off, such an API serves and is listed under `unlocked` (ADR-0007) |
 | `unlocked` | APIs whose team turned the backend lock off, and refused `"off"` settings with the reason (ADR-0007) |
 | `external` | APIs whose backend is outside the cluster, with the host and the TLS mode (ADR-0014) |
-| `unattached` | annotated routes the gateway didn't accept, with the reason from the route's status (G.6) |
+| `unattached` | API routes the gateway didn't accept, with the reason from the route's status (G.6) |
 | `settings` | the knobs in effect, and each refused or unknown annotation with the reason (ADR-0012) |
 
 The parent refuses an extra hostname that is not a valid host name, that
@@ -577,7 +585,8 @@ tenant gets the conflicting prefix. Refusals are listed under
 
 A team sets these as annotations on its gateway request; the child validates
 them and lists each refused or unknown key. Per API, the team also sets
-`rateLimit: "on"` or `"off"` on its `api` instance (§3.4, ADR-0004).
+`rateLimit` and `backendLock` (`"on"` or `"off"`) on its `api` instance
+(§3.4, ADR-0004, ADR-0007).
 
 ```yaml
 metadata:
@@ -585,7 +594,7 @@ metadata:
     api-gateway.stakater.com/claim-headers: "client_id=x-client"
     api-gateway.stakater.com/correlation-id: "on"
     api-gateway.stakater.com/access-log: "json-default"
-    api-gateway.stakater.com/trace-headers: "x-consumer-transaction-id"
+    api-gateway.stakater.com/trace-headers: "x-transaction-id"
 ```
 
 | Annotation | Effect | Limits |
@@ -599,7 +608,7 @@ metadata:
 
 - **Preflight** (bootstrap chart, at install and on upgrade): the GatewayClass
   exists; the Gateway API and Istio security, networking and telemetry CRDs
-  exist; at least one issuer is set, and every name in `defaultIssuers` and `tenantIssuers` is defined; the Redis address is set; each component is at
+  exist; at least one issuer is set, and every name in `auth.defaultIssuers` and `auth.tenantIssuers` is defined; the Redis address is set; each component is at
   or above its floor in [`support-matrix.md`](support-matrix.md). A missing
   piece fails the install and names it.
 - **Outputs** (Template Operator status outputs, as in the Enterprise
@@ -609,7 +618,8 @@ metadata:
 ## 10. Install requirements
 
 - OpenShift with Gateway API CRDs and OpenShift Service Mesh 3 in ambient mode
-  (K1 for versions); the Istio root namespace known to the chart.
+  (versions: M1 and [`support-matrix.md`](support-matrix.md)); the Istio root
+  namespace known to the chart.
 - Template Operator v2 at the version the Enterprise extension needs (T2), with
   RBAC on the kinds of §3 (Q6).
 - The Multi-Tenant Operator; tenant namespaces with the mesh labels set
@@ -635,7 +645,9 @@ metadata:
     - options: a passthrough `Route` per host; one wildcard passthrough
       `Route` per tenant on a dedicated IngressController
       (`routeAdmission.wildcardPolicy: WildcardsAllowed`); or reencrypt
-      `Route`s with a listener without hostname, which supersedes ADR-0009.
+      `Route`s for every host, to the `entry` listener without hostname,
+      which would replace ADR-0009's hostname-bound `tenant` listener (a new
+      ADR).
 - **No tenant may claim a host under the base domain at any entry point.** A
   tenant can create OpenShift `Route`s; one for `orders.team-a.<base domain>`
   on the shared router would receive callers' tokens. So the base domain gets
@@ -652,8 +664,8 @@ metadata:
 
 The first proposal (a gateway chart published as a Template, one
 `TemplateInstance` per API with a few parameters) set the goals this design
-keeps: one chart owned by the platform, no security switches, a derived
-allowed-API rule, one upgrade for all. It differs in four places:
+keeps: one chart owned by the platform, no switch for the token check, the
+API rule or the headers, a derived allowed-API rule, one upgrade for all. It differs in four places:
 
 | First proposal | This design | Why |
 |---|---|---|
@@ -676,7 +688,14 @@ request.
   that host (R2).
 - **Routes have only the `api` parameters.** No header filters, timeouts,
   retries, weights, or regular-expression, header or query matches; each is
-  a new parameter (ADR-0005).
+  a new parameter (ADR-0005). Today's charts allow header and query matches,
+  but no API uses them.
+- **Not designed yet** (found by comparing with today's charts,
+  [`parity.md`](parity.md)): the trace sampling rate of each gateway (today
+  100 %); the rate limit service's replicas, disruption budget, spread and
+  resources (Q12); `PodMonitor`s for the gateway and the waypoint; the
+  internal host per API (G.18); a preflight that also works when Argo CD
+  renders the chart with `helm template`, where `lookup` returns nothing.
 - **Stakater owns three `EnvoyFilter`s,** a Developer Preview API in Service
   Mesh 3, and depends on Istio's outbound cluster name; the upgrade suite
   (G.10) runs on every Service Mesh minor before a release supports it.
@@ -684,7 +703,7 @@ request.
   allowed-APIs claim or `azp`, such as an older gateway's own token server,
   is not supported (G.9).
 - **Identity-provider roles are manual.** The platform creates
-  `api.<tenant>.<api>` roles in RHBK (G.11).
+  `api.<tenant>.<api>.<tier>` roles in RHBK (G.11).
 - **A realm change that makes new signing keys refuses tokens for a few
   minutes.** A Keycloak realm that is imported again gets new keys. New tokens
   fail until Istio reloads the keys (up to 3 minutes), and tokens signed with
@@ -700,11 +719,13 @@ request.
 - **One gateway per tenant, also across environments.** Two environments of
   one tenant on one cluster share its gateway, its settings and its issuers;
   keep them in separate tenants or clusters (ADR-0002), or use G.12 later.
-- **The backend lock covers calls through the Service, as today.** A call to
-  a backend pod's IP doesn't pass the waypoint, so a pod in the cluster can
-  reach the backend directly and set its own headers (ADR-0007). An L4 lock
-  on the pod, or STRICT mTLS on the backend pods, closes this, at the cost of
-  scrapers on the API's port; both stay later options. Other in-mesh callers
+- **The backend lock covers mesh callers that use the Service, as today.** A
+  pod outside the mesh (calling the Service or a pod's IP) and a mesh pod
+  calling a pod's IP reach the backend directly and can set their own headers
+  (ADR-0007, observed on kind). STRICT mTLS on the backend pods refuses every
+  caller outside the mesh, `/metrics` included; an L4 lock on the pod also
+  stops mesh pods on the pod's IP. Both cost scrapers on the API's port and
+  stay open choices. Other in-mesh callers
   of the API's paths are refused; allowing named internal callers is G.17.
 - **A team can turn its backend lock off** (`backendLock: "off"`), as today;
   the backend must then check the caller itself. The platform can stop this
@@ -752,5 +773,5 @@ never deleted and created again); gateway and waypoint pods restart one at a
 time with at least two pods, a disruption budget and connection draining; a
 mesh upgrade moves one tenant's gateway at a time with the `istio.io/rev`
 label (`gateway.meshRevision`, M22); the rate limit service restarts one pod
-at a time; and the design stays closed in any apply order (§4). G.10 measures
+at a time; and the design stays closed in any apply order (§4). G.28 measures
 each switch.

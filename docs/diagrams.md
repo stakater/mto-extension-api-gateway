@@ -9,7 +9,7 @@ caller `shop`.
 ```mermaid
 flowchart LR
   caller([External caller<br/>e.g. shop])
-  idp[RHBK<br/>issues tokens with<br/>azp, allowed_apis and tier]
+  idp[RHBK<br/>issues tokens with<br/>azp and allowed_apis,<br/>one role per API and tier]
   platform([Platform team])
   team([API team])
   subgraph cluster[OpenShift cluster]
@@ -96,9 +96,9 @@ sequenceDiagram
   Note over G: remove the caller's x-sub, x-roles and team headers
   Note over G: token check: invalid → 401
   Note over G: token floor (root namespace): no valid token → 403
-  Note over G: API rule: host orders.team-a…, api.team-a.orders, azp present, else 403
+  Note over G: API rule: host orders.team-a…, path /orders/v2, api.team-a.orders, azp present, else 403
   Note over G: set x-sub=shop, x-roles from the token
-  G->>R: count team-a / silver / shop
+  G->>R: count team-a / orders / silver / shop
   R-->>G: 429 if over the limit
   G->>Z: /orders/v1 with x-sub, x-roles
   Z->>B: mTLS from the api-gateway-istio identity (skips the waypoint)
@@ -117,7 +117,7 @@ sequenceDiagram
   participant S as Service Mesh
   participant D as Team team-a
   P->>T: install the bootstrap chart once (mto-api-gateways)
-  T->>T: root-namespace floor and default deny; parent publishes api-gateway
+  T->>T: root-namespace floor and default deny; parent publishes api-gateway and api
   P->>M: create Tenant team-a (namespaces, mesh labels)
   M->>M: label namespaces stakater.com/tenant=team-a
   T->>T: parent adds team-a's namespaces to tenantOf
@@ -129,7 +129,7 @@ sequenceDiagram
   D->>D: a second request in team-a-test gets status refused, naming the owner
   D->>D: create TemplateInstance orders of api: host orders.team-a…, path /orders/v2, Service orders
   T->>D: HTTPRoute api.orders + status api.orders (strict)
-  T->>D: child: ALLOW api.orders on host + path, and backend lock (only if no other API's path overlaps and every backend can be locked)
+  T->>D: child: ALLOW api.orders on host + path, and backend lock (only if no other API's path overlaps and every backend can be locked, or the lock is off)
   Note over D: shop gets 200, others 401, 403 or 429
 ```
 
@@ -163,7 +163,7 @@ flowchart LR
   subgraph after[This extension]
     a1[no switch: token floor in the root namespace] --> c1[403]
     a2[rule derived: api.tenant.api, closed] --> c2[403]
-    a3[platform filter, no Lua, tested per upgrade] --> c3[tier from a plain claim]
+    a3[platform filter, no Lua, tested per upgrade] --> c3[tier from the caller's role for the API, exact text]
     a4[backend lock on the mesh identity] --> c4[refused]
   end
 ```

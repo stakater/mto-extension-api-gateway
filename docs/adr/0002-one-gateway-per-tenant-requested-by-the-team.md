@@ -65,7 +65,8 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
   still decides everything about how it runs.
 - The APIs of one tenant share gateway pods: a load peak on one API reaches the
   others of the same tenant. Autoscaling and the per-caller rate limit reduce
-  this; G.12 gives an API its own gateway when it needs one.
+  this; G.12 records how a tenant could get a second gateway later, if a need
+  arises.
 - Two environments of one tenant on one cluster share its gateway: its load,
   its settings and its issuers. A tenant per environment, or a cluster per
   environment, keeps them apart. A gateway per tenant and environment was
@@ -98,4 +99,5 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
   switches).** Rejected: a parameter can be set wrongly or read from a source
   the team shouldn't reach; with none, nothing in the request can be wrong.
 - **One gateway per namespace or per API.** Rejected as the default: more pods
-  for the same separation the tenant boundary gives. Kept as an opt-in (G.12).
+  for the same separation the tenant boundary gives. More than one gateway
+  per tenant stays a later option, only if a need arises (G.12).

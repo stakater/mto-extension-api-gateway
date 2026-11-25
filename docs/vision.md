@@ -26,8 +26,10 @@ gateway layer doesn't use that knowledge.
 ## The vision
 
 > **One tenant definition, carried into the API gateway.** Every tenant can
-> ask for its own gateway, with the platform's security baseline built in and
-> not switchable. The team asks once, with one parameterless
+> ask for its own gateway, with the platform's security baseline built in. The
+> token check, the API rule and the header handling can't be switched off;
+> only an API's own rate limit and backend lock can, and the platform can stop
+> that. The team asks once, with one parameterless
 > `TemplateInstance`, and publishes each API with one more `TemplateInstance`
 > that names its host, path and backend. Token check and allowed-API check come from supported Istio
 > policies; header handling and rate limits from a few platform-owned, tested
@@ -41,7 +43,7 @@ platform-owned filters, rendered per tenant by Template Operator.
 
 | Persona | Job to be done | What they get |
 |---|---|---|
-| **Platform team** | run API gateways safely for many teams, and upgrade them without a project per team | one chart for all tenants; one version bump upgrades every gateway; a security baseline that no tenant can switch off |
+| **Platform team** | run API gateways safely for many teams, and upgrade them without a project per team | one chart for all tenants; one version bump upgrades every gateway; a token check, API rule and header handling that no tenant can switch off |
 | **API team** | publish an API without learning the gateway design | one `TemplateInstance` per API, with checked parameters; first-line troubleshooting with the familiar `401`, `403`, `429` |
 | **Security and audit** | prove that every API checks the token and the caller's rights | the checks live in platform-owned policies that a route can't weaken; render checks fail on any wildcard or missing check |
 | **Red Hat platform owners** | stay on supported products through upgrades | Gateway API and Service Mesh 3 as designed; only three platform-owned `EnvoyFilter`s, tested on every Service Mesh upgrade, and the support caveat stated up front |
@@ -49,8 +51,9 @@ platform-owned filters, rendered per tenant by Template Operator.
 ## Value proposition
 
 - **Secure by construction.** The token check, the header handling and the rate
-  limit are set on the tenant's gateway by the platform. A route can add a
-  rule; it can't remove one.
+  limit are set on the tenant's gateway by the platform. A team can't remove
+  the token check, the API rule or the header handling; it can turn off only
+  its own API's rate limit and backend lock, and the platform can stop that.
 - **Self-service with one kind of object.** An API team creates a
   `TemplateInstance` for its gateway and one per API; the platform renders a
   standard Gateway API `HTTPRoute` from it. No chart copy, no values file, no
@@ -66,13 +69,15 @@ platform-owned filters, rendered per tenant by Template Operator.
 ## Principles
 
 1. The platform owns the gateway and its security baseline. Tenants own their
-   routes.
-1. Security settings are never parameters. A tenant can't turn a check off,
-   because there is no switch.
+   `api` instances.
+1. Security settings are never parameters. A tenant can't turn the token
+   check, the API rule or the header handling off, because there is no
+   switch. As today, a team can turn its API's rate limit and backend lock
+   off; the platform can stop that per tenant.
 1. Use the supported product APIs (Gateway API, Istio policies). Where a
    filter is unavoidable, the platform owns and tests it; teams never write
    one.
-1. One tenant, one gateway, by default. A tenant's routes never attach to
+1. One tenant, one gateway. A tenant's routes never attach to
    another tenant's gateway.
 1. When the platform can't do something per tenant, say so. Don't fake it.
 
@@ -84,8 +89,9 @@ platform-owned filters, rendered per tenant by Template Operator.
   They are prerequisites.
 - Mesh membership, east-west traffic between tenants, and mesh telemetry. They
   belong to the Multi-Tenant Operator's Service Mesh extension (in design).
-- A shared, multi-tenant entry point where several tenants share one host. The
-  Service Mesh extension's platform ingress covers that case.
+- A platform gateway in front of the tenant gateways, such as the Service
+  Mesh extension's ingress (ADR-0009 rejected it for v1). Tenants do share a
+  front-door host, by path prefixes the platform grants (ADR-0009).
 - API management features: developer portal, API keys sold as products,
   monetisation, request transformation beyond Gateway API filters.
 

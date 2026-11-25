@@ -69,13 +69,16 @@ production, and an API must move with nothing broken (docs/migration.md).
 
 ## Consequences
 
-- A call through the Service from any identity but the gateway gets `403`
-  from the waypoint; the health and metrics paths stay open, as today.
-- **A call to a backend pod's IP doesn't pass the waypoint, as today:** a pod
-  in the cluster can reach the backend directly and set its own headers. This
-  is a known limit (design §12). An L4 lock on the pod (the first version of
-  this ADR) or STRICT mTLS on the backend pods closes it, at the cost of
-  scrapers on the API's port; both stay options for later.
+- A call through the Service from a mesh workload that isn't the gateway gets
+  `403` from the waypoint (observed on kind); the health and metrics paths stay open, as today.
+- **Only mesh callers that use the Service pass the waypoint, as today.** A
+  pod outside the mesh, calling the Service or a pod's IP, and a mesh pod
+  calling a pod's IP, reach the backend directly and can set their own
+  headers (observed on kind, M21). This is a known limit (design §12). STRICT
+  mTLS on the backend pods refuses every caller outside the mesh, `/metrics`
+  included (observed); an L4 lock on the pod (the first version of this ADR)
+  also stops mesh pods on the pod's IP. Both cost scrapers on the API's port
+  and stay open choices.
 - More pods than the first version: one waypoint per backend namespace with a
   locked API, as today.
 - With the lock off, any caller in the cluster can skip the gateway for that

@@ -25,7 +25,7 @@ Phases → milestones → user stories. **Every story delivers a demo-able outco
 | **0 · Prove the ground** | Every open question in `gateway-baseline.md` answered: on kind with upstream Istio (ambient) and Template Operator first, then on a live OpenShift with Service Mesh 3; ADRs moved to Accepted or superseded. |
 | **1 · Walking skeleton** | A team asks for its tenant's gateway → it appears in the team's namespace and scales → the team creates one `api` instance → `shop` gets `200`, a caller without the API gets `403`, too fast gets `429`, a pod calling the backend directly is refused → the team tunes its claim headers and correlation ID with annotations. |
 | **2 · Trustworthy** | Status and preflight, lifecycle, admission, migration from per-API gateways, an upgrade test — ready for a design partner. |
-| **3 · Complete** | RHBK roles from the route, a gateway of its own when an API needs one, observability per tenant, docs. |
+| **3 · Complete** | RHBK roles from the route, a second gateway for a tenant only if a need arises (G.12), observability per tenant, docs. |
 
 ---
 
@@ -106,6 +106,7 @@ cert-manager CRDs, listener, trust and forbidden-kind checks) wired into
 **AC-ISO-2**, **AC-ISO-9**, **AC-R-1**, **AC-R-5**, **AC-LIFE-1**,
 **AC-LIFE-5**. Planning:
 [`planning/G1-gateway-per-tenant.md`](planning/G1-gateway-per-tenant.md).
+Code: the branch `feat/g1-bootstrap-chart` (PR #14).
 
 **Story G.20 — The harness renders like Template Operator** 📝 *Draft*
 
@@ -127,8 +128,9 @@ As a platform team, I want every tenant gateway reachable only through the
 entry point and recognisable by one label, so that no tenant gets a load
 balancer and the cluster-wide floor finds every gateway.
 
-Done: the team render sets `networking.istio.io/service-type: ClusterIP` and
-the platform label in the `Gateway`'s `infrastructure`; render check and
+Done: the team render sets `networking.istio.io/service-type: ClusterIP` in
+the `Gateway`'s own annotations (Istio ignores it in `infrastructure`, M13)
+and the platform label in the `Gateway`'s `infrastructure`; render check and
 mutation test; golden regenerated. Satisfies **AC-R-7**.
 
 **Story G.2 — The security baseline** 📝 *Draft*
@@ -148,13 +150,13 @@ string, and a valid token without an API rule are all refused. Satisfies
 **AC-R-1**, **AC-R-2**, **AC-ISO-8**, **AC-AUTH-1**, **AC-AUTH-2**,
 **AC-AUTH-6**, **AC-AUTH-7**, **AC-AUTH-9**, **AC-LIFE-1**.
 
-**Story G.13 — One issuer, many, or one per tenant** 📝 *Draft*
+**Story G.13 — One issuer, many, one per tenant, or one per API** 📝 *Draft*
 
 As a platform team, I want to trust one issuer, several, or a tenant's own
 issuer for that tenant only, so that environments and teams with their own
 Keycloak share one cluster without trusting each other's tokens.
 
-Done: bootstrap values `auth.issuers`, `defaultIssuers` and `tenantIssuers`
+Done: bootstrap values `auth.issuers`, `auth.defaultIssuers` and `auth.tenantIssuers`
 (ADR-0004); the floor lists every issuer; each tenant's
 `RequestAuthentication` and API rules name only its issuers; the parent
 refuses an unknown name, a duplicate URL, and a tenant-run issuer used by
@@ -198,11 +200,11 @@ gateway. Satisfies **AC-AUTH-8** (refused parts), **AC-LIFE-2**.
 
 **Story G.3 — The tenant's routes, listed** 📝 *Draft*
 
-As an API team, I want to see which of my routes are APIs and which are not,
-and why, so that I can fix a route before anyone calls it.
+As an API team, I want to see which of my `api` instances serve and which
+routes are not APIs, and why, so that I can fix an API before anyone calls it.
 
-Done: the child lists the tenant's `HTTPRoute`s and `Service`s by the tenant
-label; the status ConfigMap `<request>-apis` in the gateway's namespace lists
+Done: the child lists the tenant's `TemplateInstance`s, `HTTPRoute`s and
+`Service`s by the tenant label; the status ConfigMap `<request>-apis` in the gateway's namespace lists
 APIs, routes that are not APIs, duplicate API names (oldest wins), path
 conflicts on one host (ADR-0005) and invalid backends; a tenant with no
 routes renders cleanly. Satisfies **AC-OPS-2** (route parts).
@@ -287,7 +289,7 @@ measures, rendered per tenant gateway: for shared hosts, one reencrypt `Route`
 per granted prefix and the `entry` listener (ADR-0009); for the tenant's own
 and extra hostnames, a passthrough `Route` per host or one wildcard
 passthrough `Route` on a dedicated IngressController, as G.0 shows;
-certificates from the platform's issuer. Satisfies **AC-ISO-2** (live),
+certificates from the platform's certificate issuer. Satisfies **AC-ISO-2** (live),
 **AC-ISO-10**.
 
 ---
@@ -301,7 +303,7 @@ Mesh, the Gateway API and Istio CRDs, Template Operator, the issuer and Redis,
 and for the version floors in [`support-matrix.md`](support-matrix.md).
 Satisfies **AC-OPS-2**.
 
-**Story G.7 — Lifecycle** 📝 *Draft* — route deleted, request deleted,
+**Story G.7 — Lifecycle** 📝 *Draft* — `api` instance deleted, request deleted,
 tenant deleted, a hand edit reverted or refused; nothing left behind, nothing
 else touched. Satisfies **AC-LIFE-2**, **AC-LIFE-3**, **AC-LIFE-4**,
 **AC-LIFE-6**.
@@ -343,7 +345,7 @@ issue #8). Satisfies **AC-OPS-4**, **AC-OPS-5**, **AC-OPS-6**.
 ## Phase 3 — Complete
 
 **Story G.11 — Identity-provider roles from the route** 📝 *Draft* — the
-`api.<tenant>.<api>` role and the API's client created in RHBK from the
+`api.<tenant>.<api>.<tier>` roles and the API's client created in RHBK from the
 `api` instance, so that the three owners of a new API become one request.
 Needs a supported way to configure RHBK from the cluster; decided in its
 planning doc.
@@ -420,5 +422,6 @@ in `CLAUDE.md`.
 ## Not on the roadmap (non-goals)
 
 Running the identity provider · installing Service Mesh, Redis or the
-Gateway API CRDs · mesh membership and east-west traffic · a shared
-multi-tenant entry point · API management features. See `vision.md`.
+Gateway API CRDs · mesh membership and east-west traffic · a platform
+gateway in front of the tenant gateways (ADR-0009) · API management features.
+See `vision.md`.

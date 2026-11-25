@@ -63,8 +63,9 @@ an API team instantiates once per API.
   re-create a values file, and an instance renders with the operator's rights
   and can read through `valueFrom`. Kept in a safer form for the gateway
   itself: one `TemplateInstance` per tenant, with no parameters (ADR-0002).
-  Its goals (one chart, no security switches, a derived allowed-API rule, one
-  upgrade) are kept — see ADR-0004..0006.
+  Its goals (one chart, no switch for the token check, the API rule or the
+  headers, a derived allowed-API rule, one upgrade) are kept — see
+  ADR-0004..0006.
 - **A new operator with an `ApiGateway` CRD.** Rejected: one more component to
   build and run, for objects that already have standard APIs.
 - **A chart per team (today).** Rejected: copies drift, and every team owns the

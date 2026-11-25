@@ -15,13 +15,13 @@ beyond their routes:
 | Claim → header mapping | one team: `client_id` → its own header name, instead of `azp` → `x-sub` | the backend's contract for who called |
 | Correlation ID | some on, some off | a header that ties log lines of one call together |
 | Access log and traces | one team: its own log format and two extra trace headers | the team's own observability |
-| Rate limit | one team off | the team's switch on each `api` instance (ADR-0004), not a gateway knob; not by a team setting |
+| Rate limit | one team off | the team's switch on each `api` instance (ADR-0004), not a gateway knob |
 
 No team changed scaling or public paths. Other differences (an external
 backend, a legacy issuer, no backend lock, one public host split by path) are
 not settings: they are parameters of the `api` instance (ADR-0014 for the
 external backend, ADR-0007 for the lock), later stories (G.9, G.17), or the
-entry point (ADR-0005, G.18).
+entry point (ADR-0009, G.18).
 
 Template Operator facts (T6–T8): the render context of an instance holds its
 name, namespace and labels, not its annotations; a parameter can read a

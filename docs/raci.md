@@ -31,7 +31,7 @@ What that costs — the failure modes this extension removes (`vision.md`):
 | 5 | **One gateway per API per environment, at a fixed replica count.** Two APIs × three environments = six gateways, each running whether or not the API is called. |
 | 6 | **Three owners, no single request.** Mesh labels, identity-provider roles and gateway values are owned separately; a gateway deploys "green" while a label is missing. |
 
-## With the extension (one tenant gateway, standard routes)
+## With the extension (one tenant gateway, `api` instances)
 
 The gateway becomes a platform-defined, per-tenant `Gateway`: a team requests
 it with one parameterless `TemplateInstance`, and Template Operator renders it
@@ -49,7 +49,7 @@ mesh labels come from the `Tenant`.
 |---|---|---|---|
 | Service Mesh version and settings | R, A | I | same |
 | The rate limit service and its tiers | R, A | I | same service; the tiers become platform values, and the header and rate limit `EnvoyFilter`s become platform-owned and tested on each Istio upgrade (ADR-0003) |
-| Identity provider realm, clients, `api.<tenant>.<api>` roles | R, A | C | same (automated from the route later, G.11) |
+| Identity provider realm, clients, `api.<tenant>.<api>.<tier>` roles | R, A | C | same (automated from the route later, G.11) |
 | `Tenant`: namespaces and mesh labels | R, A | C | same |
 | **The gateway charts and the Template** | R, A | I | **moves to platform** (each team copied the chart today) |
 | **Request the tenant's gateway** (one parameterless `TemplateInstance`) | A | R | **new** — one request per tenant; the platform decides how the gateway runs (ADR-0002) |
@@ -71,8 +71,11 @@ mesh labels come from the `Tenant`.
   API team gets wrong or lets drift today.
 - **Stays with the API team:** a team still **publishes, changes and
   troubleshoots its own APIs** — now with one `api` `TemplateInstance`, not a
-  chart copy, and with no security switch to get wrong. Self-service is unchanged; the
+  chart copy, and with no switch for the token check, the API rule or the
+  headers to get wrong. Self-service is unchanged; the
   footguns are gone.
 - **The one-line test:** the only way a tenant exposes an API is an `api`
   `TemplateInstance`, which renders a route on its platform-owned gateway
-  (ADR-0005, ADR-0008). An API can add a rule; it can't remove a baseline one.
+  (ADR-0005, ADR-0008). An API can't remove the token check, the API rule or
+  the header replacement; it can turn off only its own rate limit and backend
+  lock, unless the platform locks the tenant.

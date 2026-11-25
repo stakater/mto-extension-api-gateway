@@ -40,7 +40,8 @@ Fixture:
 - APIs (`api` instances with an echo backend, ADR-0005): `orders` in
   `team-a-dev` on `orders.team-a.apis.example.com` (`/orders/v2` →
   `/orders/v1`), `payments` in `team-a-test` on the same host
-  (`/payments/v1`), `billing` in `team-b-dev` on
+  (`/payments/v1`), `reports` in `team-a-dev` on
+  `reports.team-a.apis.example.com` (`/reports/v1`), `billing` in `team-b-dev` on
   `billing.team-b.apis.example.com`, and `a-orders` in `team-core` on
   `a-orders.team.apis.example.com`.
 - Routes without the annotation, written by an admin (tenants can't write
@@ -62,13 +63,15 @@ Fixture:
 ## Tenant separation
 
 **AC-ISO-1 — A route can't attach to another tenant's gateway.** *(R+L)* An
-`HTTPRoute` in `team-b-dev` with a `parentRef` to `team-a`'s gateway
+`HTTPRoute` in `team-b-dev`, written by an admin (tenants can't write routes,
+AC-ISO-6), with a `parentRef` to `team-a`'s gateway
 (`api-gateway` in `team-a-dev`) is not accepted (route status
 `Accepted=False`); a request for its host through `team-a`'s gateway gets no
 route. `billing`, attached to `team-b`, is accepted.
 
 **AC-ISO-2 — A host outside the tenant's hostnames is never served.** *(L)* A
-route in `team-a-dev` for `x.team-b.apis.example.com` doesn't attach
+route in `team-a-dev`, written by an admin, for `x.team-b.apis.example.com`
+doesn't attach
 (`Accepted=False`, listed as `unattached`); a request for that host through
 the real entry point never reaches `team-a`'s backend. `orders` attaches and
 serves.
@@ -88,7 +91,8 @@ by the waypoint (`403`); the same request through `team-a`'s gateway, as
 Service gets the backend's answer; kubelet probes and the platform's
 monitoring keep working. After a cluster admin adds an `ALLOW` policy for any
 source on Service `orders`, `intruder` is still refused. A call from
-`intruder` to an `orders` pod's IP is recorded as the known limit (M21,
+`intruder` to an `orders` pod's IP, and calls from `outsider` (outside the
+mesh) to the Service and to a pod's IP, are recorded as the known limit (M21,
 Q21).
 
 **AC-ISO-6 — Tenants can't change or impersonate their gateway.** *(L)* As
@@ -108,31 +112,6 @@ allowed-API rule is rendered for `legacy` or `stray`; both are refused for
 every caller and listed as `invalid` and `outside-mesh`. An API whose
 namespace has no `istio.io/use-waypoint` label is listed as `outside-mesh` and
 serves nothing. `orders` serves.
-
-**AC-EXT-1 — An API with a backend outside the cluster.** *(R+L)* The `api`
-instance `partner` sets `externalHost` to a lab host outside the mesh, with
-`tls: SIMPLE` and the lab CA in `tlsSecret`. `shop`, with a token for
-`api.team-a.partner`, gets the host's answer; the host saw its own name in
-`Host`, the rewritten path, `x-sub` and `x-roles`, and no `Authorization`
-header. A caller without the API's role gets `403`, and the rate limit
-applies. With a wrong CA in the Secret, the call fails, and the API is never
-served in plain text. With `tls: MUTUAL`, the host sees the gateway's client
-certificate. Render: the `ServiceEntry` and `DestinationRule` are in the
-gateway's namespace, the `ExternalName` Service in the instance's; the API is
-listed as `external`, with no lock.
-
-**AC-EXT-2 — Only the extension's external backends.** *(R)* An `api` instance
-that sets both `service` and `externalHost`, or neither, is `refused`. A route
-to an `ExternalName` Service written by hand serves nothing and is listed as
-`invalid`.
-
-**AC-ISO-11 — A team turns its backend lock off, unless the platform locks
-it.** *(R+L)* With `backendLock: "off"` on `stray`, no lock and no waypoint are
-rendered for it, the API serves, and `api-gateway-apis` lists it under
-`unlocked`. With `team-a` in `backendLock.lockedTenants`, the same parameter
-is refused with the reason in `api.stray`, and the API still serves nothing.
-A render check fails on an open path that isn't in the platform's list, or
-that uses a pattern.
 
 **AC-ISO-8 — Every listener denies by default.** *(R+L)* The root-namespace
 `ALLOW` that selects every tenant gateway has no rules; `plain-extra`, on the
@@ -158,6 +137,32 @@ parent and listed under `team-b.paths`. As `alice`, an OpenShift `Route` for
 `front.example.com` is refused (AC-ISO-6). Render: each granted prefix has
 one reencrypt `Route` to its tenant's gateway Service, and only a tenant with
 prefixes has the `entry` listener.
+
+**AC-ISO-11 — A team turns its backend lock off, unless the platform locks
+it.** *(R+L)* With `backendLock: "off"` on `stray`, no lock and no waypoint are
+rendered for it, the API serves, and `api-gateway-apis` lists it under
+`unlocked`. With `team-a` in `backendLock.lockedTenants`, the same parameter
+is refused with the reason in `api.stray`, the lock stays on, and the API
+still serves nothing.
+A render check fails on an open path that isn't in the platform's list, or
+that uses a pattern.
+
+**AC-EXT-1 — An API with a backend outside the cluster.** *(R+L)* The `api`
+instance `partner` sets `externalHost` to a lab host outside the mesh, with
+`tls: SIMPLE` and the lab CA in `tlsSecret`. `shop`, with a token for
+`api.team-a.partner`, gets the host's answer; the host saw its own name in
+`Host`, the rewritten path, `x-sub` and `x-roles`, and no `Authorization`
+header. A caller without the API's role gets `403`, and the rate limit
+applies. With a wrong CA in the Secret, the call fails, and the API is never
+served in plain text. With `tls: MUTUAL`, the host sees the gateway's client
+certificate. Render: the `ServiceEntry` and `DestinationRule` are in the
+gateway's namespace, the `ExternalName` Service in the instance's; the API is
+listed as `external`, with no lock.
+
+**AC-EXT-2 — Only the extension's external backends.** *(R)* An `api` instance
+that sets both `service` and `externalHost`, or neither, is `refused`. A route
+to an `ExternalName` Service written by hand serves nothing and is listed as
+`invalid`.
 
 ## Authentication and authorization
 
@@ -216,7 +221,7 @@ trusts `shared` for every tenant and `team-b-sso` for `team-b` only. `bank`'s
 token from `team-b-sso` gets `200` on `billing`. A token from `team-b-sso`
 that claims `api.team-a.orders` never gets a `2xx` on `orders`. `shop`'s token
 from `shared` is refused on `billing` when `team-b`'s list doesn't name
-`shared`. Render: a platform value that puts `team-b-sso` in `defaultIssuers`
+`shared`. Render: a platform value that puts `team-b-sso` in `auth.defaultIssuers`
 or in `team-a`'s list is refused by the parent and listed; the floor lists
 both issuers; `team-a`'s `RequestAuthentication` and API rules name only
 `shared`.
@@ -265,8 +270,14 @@ calling `billing` far past the `gold` limit never gets `429`; `team-b`'s
 gateway still has the rate limit filter (render), and its tenant is
 `unlimited` in the rate limit service's configuration. With
 `rateLimit.unlimitedApis: [team-a.payments]`, `shop` calling `payments` far
-past its limit never gets `429`, and still gets `429` on `orders`. No team
-setting turns a limit off.
+past its limit never gets `429`, and still gets `429` on `orders`. No gateway
+annotation turns a limit off; only the `api` instance's `rateLimit` parameter
+does (AC-RL-7).
+
+**AC-RL-6 — A rate limiter outage follows the platform's choice.** *(L)* With
+the rate limit service scaled to zero, `shop` gets `200` when the platform
+value says fail open, and is refused when it says fail closed; both cases are
+documented.
 
 **AC-RL-7 — A team turns its API's limit off, unless the platform locks it.**
 *(R+L)* With `rateLimit: "off"` on `reports`, `shop` calling `reports` far past
@@ -274,11 +285,6 @@ its limit never gets `429`, and still gets `429` on `orders`; the rate limit
 filter stays, `reports` has no rate limit entry, and the tenant's status lists
 it as off. With `team-a` in `rateLimit.lockedTenants`, the same parameter is
 refused with the reason in `api.reports`, and `reports` keeps its limit.
-
-**AC-RL-6 — A rate limiter outage follows the platform's choice.** *(L)* With
-the rate limit service scaled to zero, `shop` gets `200` when the platform
-value says fail open, and is refused when it says fail closed; both cases are
-documented.
 
 ## Team settings
 
@@ -313,11 +319,12 @@ only from the `Authorization` header), the header-removal filter and the rate
 limit filter. Removing any of them from a template fails the check (mutation
 test).
 
-**AC-R-3 — No security switch reaches a tenant.** *(R)* No team annotation
+**AC-R-3 — No security knob on the gateway request.** *(R)* No team annotation
 names the issuer, the audience, the allowed-APIs claim, the tiers, the rate
 limit or the backend lock; such an annotation is listed as an unknown key and
-changes nothing in the render. The one team switch is an API's own rate limit
-(AC-RL-7).
+changes nothing in the render. The team switches are an API's own rate limit
+(AC-RL-7) and backend lock (AC-ISO-11), set on its `api` instance; no
+annotation names either.
 
 **AC-R-4 — Allowed-API rules are derived and closed.** *(R)* Every per-API
 condition is exactly `api.<tenant>.<api>` and `api.<tenant>.<api>.*`, plus,
@@ -328,7 +335,10 @@ without the tenant or the API in it fails the render.
 **AC-R-5 — The listener takes only its tenant.** *(R)* Every tenant gateway's
 listener has `allowedRoutes.namespaces.from: Selector` on
 `stakater.com/tenant: <tenant>` and hostname `*.<tenant>.<base domain>` (or a
-granted extra hostname); no listener has `from: All`.
+granted extra hostname); no listener has `from: All`. The only listener
+without a hostname is `entry`, and only a tenant with shared-host prefixes
+has it (ADR-0009); a fixture with any other listener without a hostname, or
+with `entry` for a tenant without prefixes, fails.
 
 **AC-R-6 — Per-API rules are scoped to their API's host and path.** *(R)*
 Every per-API `ALLOW` names only its route's host, and its path as `<path>`
@@ -350,17 +360,6 @@ tenant `team-c` has no gateway until its team creates a `TemplateInstance` of
 `<request>-status` saying `ok`, and the tenant's child renders the gateway's
 policies, with no other step.
 
-**AC-LIFE-5 — A tenant has one gateway.** *(R+L)* `extra` in `team-a-test`
-renders no `Gateway`; its `extra-status` says `refused` and names
-`team-a-dev/api-gateway`. `stray-request` in `unlabelled` is refused too
-(`targetNamespaces`, and the parent's list). Deleting `api-gateway` makes
-`extra` the owner, and `team-a-test` gets the gateway.
-
-**AC-LIFE-6 — A team can't change its gateway.** *(L)* As `alice`, editing or
-deleting `team-a`'s `Gateway`, its settings ConfigMap or one of its policies is
-refused at admission (sync mode `strict`). Deleting the request `api-gateway`
-removes the gateway and everything it rendered.
-
 **AC-LIFE-2 — A deleted API takes its route and policies.** *(L)* Deleting
 the `api` instance `orders` removes its route, its allowed-API rule and its
 backend lock; `payments`, `billing` and `a-orders` are unchanged.
@@ -372,6 +371,17 @@ backend lock; `payments`, `billing` and `a-orders` are unchanged.
 **AC-LIFE-4 — A hand edit is reverted.** *(L)* Editing `team-a`'s
 `RequestAuthentication` (for example, removing the audience) is reverted by
 Template Operator; AC-AUTH-2 passes afterwards.
+
+**AC-LIFE-5 — A tenant has one gateway.** *(R+L)* `extra` in `team-a-test`
+renders no `Gateway`; its `extra-status` says `refused` and names
+`team-a-dev/api-gateway`. `stray-request` in `unlabelled` is refused too
+(`targetNamespaces`, and the parent's list). Deleting `api-gateway` makes
+`extra` the owner, and `team-a-test` gets the gateway.
+
+**AC-LIFE-6 — A team can't change its gateway.** *(L)* As `alice`, editing or
+deleting `team-a`'s `Gateway`, its settings ConfigMap or one of its policies is
+refused at admission (sync mode `strict`). Deleting the request `api-gateway`
+removes the gateway and everything it rendered.
 
 ## Operations
 

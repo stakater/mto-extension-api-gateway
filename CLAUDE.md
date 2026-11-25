@@ -21,19 +21,22 @@ chart, Template Operator v2 objects, the parent fan-out of one child per
 
 ## Status: walking skeleton, render-tested only
 
-G.1 is built: the bootstrap chart (`charts/mto-extension-api-gateway-bootstrap`)
-publishes the `api-gateway` Template, and a team's request renders its
-tenant's `Gateway` in the team's namespace. The next stories, in order, are in
+G.1 is built on the code branch (`feat/g1-bootstrap-chart`, PR #14, stacked on
+the design branch): the bootstrap chart
+(`charts/mto-extension-api-gateway-bootstrap`) publishes the `api-gateway`
+Template, and a team's request renders its tenant's `Gateway` in the team's
+namespace. The next stories, in order, are in
 `docs/roadmap.md`: the kind spike (G.19) first, then the harness (G.20) and
 the baseline. **G.0, the OpenShift spike, is not done.** Nothing is proven on
 a cluster yet, and no chart is released before G.19 and G.0.
 
 `make verify` gates every PR: markdownlint, relative links, the method checks
-in `hack/check_method.py` and their tests, and `make charts`
-(`hack/chart-render-tests.sh`: render checks, the golden, and CRD validation
-against `hack/crds` through `hack/crd-validate`). It needs helm, yq and Go.
-CI runs it, plus the ADR-immutability and story-citation checks. Regenerate
-the golden only after an intended change: `make golden`.
+in `hack/check_method.py` and their tests. On the code branch, from G.1, it
+also runs `make charts` (`hack/chart-render-tests.sh`: render checks, the
+golden, and CRD validation against `hack/crds` through `hack/crd-validate`),
+which needs helm, yq and Go. CI runs it, plus the ADR-immutability and
+story-citation checks. Regenerate the golden only after an intended change:
+`make golden` (code branch).
 
 ## Invariants — never violate these
 
@@ -48,10 +51,14 @@ the golden only after an intended change: `make golden`.
 1. **Gateway policy is rendered by the tenant's child, never by the team's
    request** (ADR-0013): `RequestAuthentication`, filters, `Telemetry`, the
    per-API `ALLOW`s and the backend locks. Tenants can't write gateway policy
-   or act as the gateway (ADR-0008). No security setting is a per-tenant
-   value, except two platform values: the tenant's issuers and the rate-limit
-   exemption (a whole tenant or one API). The one team switch is an API's
-   own rate limit (`rateLimit: "off"`), which the platform can lock. An issuer run by one tenant is never trusted for another.
+   or act as the gateway (ADR-0008). The token check, the API rule and the
+   header replacement have no switch. A team has two switches per API, on
+   its `api` instance: `rateLimit: "off"` (ADR-0004) and `backendLock: "off"`
+   (ADR-0007); the platform can lock either per tenant
+   (`rateLimit.lockedTenants`, `backendLock.lockedTenants`), and can exempt a
+   whole tenant or one API from the rate limit. The tenant's issuers are a
+   per-tenant platform value. An issuer run by one tenant is never trusted for
+   another.
 1. **An API is an `api` `TemplateInstance`, and its rule checks the host and
    the path** (ADR-0005): the team never writes a route; the template checks
    the parameters, and admission refuses `valueFrom`. The per-API `ALLOW`
@@ -148,7 +155,7 @@ vendored CRDs, the skipped-tenants ConfigMap.
 The Multi-Tenant Operator's Service Mesh extension (in design) owns mesh
 membership, east-west rules between tenants and the shared platform ingress.
 It refuses tenant-created `Gateway`s and filters. This extension must agree
-with it on one list of refused kinds (story G.8); neither duplicates the other.
+with it on one list of refused kinds (story G.23); neither duplicates the other.
 
 ## Boundaries
 

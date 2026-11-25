@@ -1,5 +1,7 @@
 # Migration runbook: from per-API gateways to tenant gateways
 
+What each feature of today's charts becomes: [`parity.md`](parity.md).
+
 How an API moves from its own gateway (one Helm release per API, the pattern
 we replace) to its tenant's gateway, **with no change for its callers**. The
 per-API gateways serve production, so every step can be undone and every API
@@ -39,15 +41,16 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
 1. **Set its values to match today's behaviour:**
     - `auth.issuers`: the identity provider that issues today's tokens, with
       `jwksUri` when its host is not reachable from the cluster;
-      `defaultIssuers` names it (ADR-0004).
+      `auth.defaultIssuers` names it (ADR-0004).
     - `rateLimit.tiers`: the same rates as today's shared rate limit
       configuration (for example gold 100, silver 50, bronze 10 per second);
       the failure mode as today (fail open, if that is today's choice).
     - `rateLimit.redis.*`: the platform's Redis.
     - `gateway.sharedHosts`: the shared front host, with each tenant's path
       prefixes (ADR-0009). Grant a prefix that is **shorter** than the paths of
-      today's per-API routes, for example `/orders` for `/orders-v2/v1` (see
-      step 3.f).
+      today's per-API routes, and that the API's path is under segment by
+      segment (ADR-0005), for example `/orders-v2` for `/orders-v2/v1`, not
+      `/orders` (see step 3.f).
     - `migration.legacyRoles`: for each API that moves, its old role name,
       for example `team-a.orders: api-orders-consumer` (ADR-0006).
     - `migration.oldGateways`: for each API that moves, its old gateway's

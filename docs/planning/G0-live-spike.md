@@ -17,7 +17,7 @@ measured before G.18 renders anything.
 
 ## Governing constraints
 
-- ADR-0001..0013 (0011 Rejected): this spike moves each to Accepted or writes a
+- ADR-0001..0015 (0011 Rejected): this spike moves each to Accepted or writes a
   superseding ADR.
 - Baseline: Service Mesh 3.3 and 3.4, Gateway API v1.5.1, Template Operator v2
   ≥ 0.0.5. Record exact versions of every component and of OpenShift.
@@ -33,8 +33,8 @@ measured before G.18 renders anything.
 Environment: an OpenShift 4.20+ lab cluster with Service Mesh 3 in ambient
 mode (discovery selectors on `istio-discovery=enabled`, M5), the
 Multi-Tenant Operator with the fixture tenants, Template Operator v2, RHBK with
-the fixture clients (a protocol mapper puts `allowed_apis` (list) and `tier` in
-the access token), a Redis, and an echo backend.
+the fixture clients (a protocol mapper puts `allowed_apis`, a list with one
+role per API and tier, in the access token), a Redis, and an echo backend.
 
 Steps, each recorded in `docs/spikes/g0-findings.md` with the command, the
 output and the answer:
@@ -55,6 +55,19 @@ output and the answer:
 1. Q9: as a tenant editor, `kubectl auth can-i` for every kind of ADR-0008,
    before and after the admission policy.
 1. Repeat steps 2 and 4 after a Service Mesh minor upgrade (3.3 → 3.4).
+1. **Shared host (R1–R3, Q17):** grant `front.example.com` with `/orders` to
+   `team-a` and `/billing` to `team-b`, with `InterNamespaceAllowed` on the
+   router; confirm that each reencrypt `Route` reaches its own gateway's
+   `entry` listener with the service CA certificate, and that the longest
+   path wins.
+1. **Key reload (M19):** set the control plane's key reload interval to 3
+   minutes; change a lab issuer's signing keys and record how long its tokens
+   are refused.
+1. **Tier expression (M20):** confirm that Service Mesh 3's proxy includes the
+   expression rate limit descriptor; if it doesn't, record it for ADR-0003's
+   tier claim fallback.
+1. **Mesh revisions (M22):** run two control-plane revisions; move `team-a`'s
+   gateway to the new revision with `istio.io/rev`, and back, under load.
 
 ## Tests (red first)
 

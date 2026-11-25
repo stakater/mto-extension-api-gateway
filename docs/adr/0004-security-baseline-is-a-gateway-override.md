@@ -62,34 +62,41 @@ auth:
 
 One issuer for the cluster is one entry and the default. An issuer with
 `tenant` set is run for that tenant (its own or an API's external Keycloak):
-the parent refuses it in `defaultIssuers` and in another tenant's list. The
+the parent refuses it in `auth.defaultIssuers` and in another tenant's list. The
 parent also refuses an unknown issuer name and two issuers with the same URL,
 and skips a tenant that has no issuer; each is listed in the skipped-tenants
 ConfigMap.
 
 An API uses its tenant's default issuers, or names its own in the `api`
-instance's `issuers` parameter (ADR-0005): one or more of `defaultIssuers`,
-its tenant's `tenantIssuers`, and the issuers registered with its tenant. Any
+instance's `issuers` parameter (ADR-0005): one or more of `auth.defaultIssuers`,
+its tenant's `auth.tenantIssuers`, and the issuers registered with its tenant. Any
 other name refuses the API, with the reason in its status. So an API's
 external Keycloak is trusted by that API only, not by the tenant's other
 APIs.
 
-- **No security setting is a value a tenant can reach.** Issuers and which
-  tenant uses which, audiences, claim names, header names and tiers are
-  bootstrap chart values, set by the platform. A team's knobs (ADR-0012) can add claim
+- **No security setting is a value a tenant can reach, except two switches
+  per API (below).** Issuers and which tenant uses which, audiences, claim
+  names, header names and tiers are bootstrap chart values, set by the
+  platform. An API's `issuers` parameter only picks from the issuers the
+  platform registered for its tenant. A team's knobs (ADR-0012) can add claim
   headers; they can't remove a platform header or touch a check.
-- **One exception: the rate limit can be turned off.**
-    1. **By the team, for its own API:** the `api` instance's parameter
-       `rateLimit: "off"` (default `"on"`, ADR-0005), as a team turns off a
-       per-API gateway's limit today. The platform can stop this for a
-       tenant (`rateLimit.lockedTenants`): an `"off"` there is refused with
-       the reason in the API's status, and the limit stays.
-    1. **By the platform:** for a whole tenant (`rateLimit.unlimitedTenants`)
-       or one API (`rateLimit.unlimitedApis`, `<tenant>.<api>`).
+- **Two exceptions: the rate limit and the backend lock can be turned off.**
+    1. **The rate limit, by the team, for its own API:** the `api` instance's
+       parameter `rateLimit: "off"` (default `"on"`, ADR-0005), as a team
+       turns off a per-API gateway's limit today. The platform can stop this
+       for a tenant (`rateLimit.lockedTenants`): an `"off"` there is refused
+       with the reason in the API's status, and the limit stays.
+    1. **The rate limit, by the platform:** for a whole tenant
+       (`rateLimit.unlimitedTenants`) or one API (`rateLimit.unlimitedApis`,
+       `<tenant>.<api>`).
+    1. **The backend lock, by the team, for its own API:** the `api`
+       instance's parameter `backendLock: "off"` (ADR-0007). The platform can
+       stop this for a tenant (`backendLock.lockedTenants`).
 
-  The filter stays on the gateway; only the limit of that API or tenant goes.
-  Every API with its limit off is listed in the tenant's status. No other
-  check can be turned off.
+  The rate limit filter stays on the gateway; only the limit of that API or
+  tenant goes. Every API with its limit or its lock off is listed in the
+  tenant's status. No other check can be turned off: the token check, the
+  allowed-API rule and the header replacement have no switch.
 - **Tenants can't write gateway policy or act as the gateway.** Admission
   refuses a tenant's `RequestAuthentication`, `AuthorizationPolicy`,
   `Telemetry` or `EnvoyFilter` that targets or selects a tenant gateway, and a
@@ -101,16 +108,18 @@ APIs.
 
 ## Consequences
 
-- A team's route can't remove a check: the checks are not on the route, and
-  the team can't write gateway policy.
+- A team's `api` instance can't remove a check, other than its own rate limit
+  and backend lock: the checks are not on the route, and the team can't write
+  gateway policy.
 - The floor and the default deny hold even while a tenant's child is being
   applied or has failed.
 - An extra `ALLOW` policy written by a cluster admin could widen the
   allowed-API rule, but never past the token floor. The render check covers
   only what the charts render.
-- The baseline differs per tenant only in two platform values: its issuers
-  and the rate-limit exemption. An API narrows its issuers to the ones the
-  platform registered for its tenant.
+- The baseline differs per tenant only in per-tenant platform values (listed
+  in `docs/parameters.md`, section 6) and in its teams' two switches per API.
+  An API narrows its issuers to the ones the platform registered for its
+  tenant.
 - A team that runs its own issuer reaches only its own tenant's APIs: no
   other tenant's gateway validates its tokens, so they get no principal and
   are refused. G.19 tests this (Q18).
@@ -159,8 +168,9 @@ APIs.
 - **A floor per tenant, with only its issuers.** Rejected: a new tenant's
   floor would depend on its own render, the gap the cluster-wide floor
   closes. The tenant's token check and API rules narrow the issuers instead.
-- **Security settings as Template parameters with safe defaults.** Rejected:
-  a parameter can be set; only an absent switch can't.
+- **Security settings as Template parameters with safe defaults.** Rejected
+  for the checks: a parameter can be set; only an absent switch can't. The
+  rate limit and the backend lock are the two exceptions, as today.
 - **The checks in each route's own policy.** Rejected: a route without the
   policy would serve unprotected; the default deny closes that.
 - **Admission policies only.** Kept as a layer (ADR-0008), not as the

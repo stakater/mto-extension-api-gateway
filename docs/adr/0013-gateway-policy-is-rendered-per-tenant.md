@@ -6,8 +6,9 @@
 ## Context
 
 The team's request (ADR-0002) renders the tenant's `Gateway`. The gateway's
-policies need more than the request can see: the tenant's annotated
-`HTTPRoute`s, their backend `Service`s, and the team's knobs (ADR-0012). The
+policies need more than the request can see: the tenant's `api` instances
+and the `HTTPRoute`s they render, their backend `Service`s, and the team's
+knobs (ADR-0012). The
 parent already reads every `TemplateInstance`, but if it validated knobs
 itself, one malformed request could fail the parent's render for every
 tenant, and every knob change would rewrite the `api-gateway` Template and
@@ -33,8 +34,8 @@ same way.
   per API (in the gateway's namespace), one backend lock per backend and one
   waypoint per backend namespace (in the route's namespace, ADR-0007), and the
   tenant's status ConfigMap `<request>-apis` in
-  the gateway's namespace (APIs, routes that are not APIs, duplicates, host
-  conflicts, refused knobs).
+  the gateway's namespace (APIs, routes that are not APIs, duplicates, path
+  conflicts, unlocked and external APIs, refused knobs).
 - **The team's request keeps** the `Gateway`, its scaling ConfigMap, its
   certificates and its own status ConfigMap.
 - The child syncs `strict`, like the team's Template.

@@ -26,7 +26,7 @@ headers set from the token. The backend lock doesn't apply: the host is
 outside the mesh.
 
 ADR-0005 and ADR-0007 first refused such a backend (an `ExternalName` was
-invalid, story G.16 later). The per-API gateways serve production, and an API
+invalid, and such a backend was left for later). The per-API gateways serve production, and an API
 must move with nothing broken (docs/migration.md).
 
 ## Decision
@@ -46,7 +46,7 @@ must move with nothing broken (docs/migration.md).
 
 - **What is rendered,** as in today's chart:
     1. by the `api` instance, in its own namespace: the `ExternalName` Service
-       `api.<api>.external`, and the route to it, which rewrites the `Host`
+       `api-<api>-external`, and the route to it, which rewrites the `Host`
        header to `externalHost`;
     1. by the tenant's child, in the gateway's namespace, where the gateway
        calls from: the `ServiceEntry` and the `DestinationRule`
@@ -74,7 +74,7 @@ must move with nothing broken (docs/migration.md).
 
 ## Alternatives
 
-- **Refuse backends outside the cluster (the first version, story G.16).**
+- **Refuse backends outside the cluster (the first version).**
   Rejected: the API that uses one today couldn't move.
 - **A platform list of allowed external hosts per tenant.** Not chosen for
   now, to keep today's design; it stops a team from sending callers' requests

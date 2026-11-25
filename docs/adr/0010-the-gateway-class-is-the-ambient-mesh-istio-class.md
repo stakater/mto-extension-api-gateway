@@ -23,7 +23,7 @@ mesh trusts (M4, M9).
 - **Every tenant gateway uses the class `istio`** of the ambient mesh's
   control plane.
 - `gateway.className` is a bootstrap value with one allowed value; the values
-  schema refuses any other (design §9).
+  schema refuses any other (design §10).
 
 ## Consequences
 
