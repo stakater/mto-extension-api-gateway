@@ -31,7 +31,7 @@ Phases → milestones → user stories. **Every story delivers a demo-able outco
 
 ## Phase 0 — Prove the ground
 
-**Story G.19 — Kind spike** 📝 *Draft*
+**Story G.19 — Kind spike** ✅ *Done* (2026-11-26; planning: [`planning/G19-kind-spike.md`](planning/G19-kind-spike.md); the lab: [`hack/lab/`](../hack/lab/README.md), `make lab-up lab-test`, 81 of 81 checks on Istio 1.27.9 and 1.30.8)
 
 As the engineer building the extension, I want the riskiest Istio and
 Template Operator assumptions tested on a kind cluster first, so that every
@@ -126,7 +126,10 @@ every gotemplate; Istio CRDs (`security.istio.io`, `networking.istio.io`,
 LIST and for listed objects without annotations, each failing offline as it
 would live; a check that fails if a Template carries a Helm hook annotation,
 since Template Operator doesn't run hooks (#6), or if the bootstrap chart uses
-`lookup`, which returns nothing under Argo CD (H1); the render tests pass
+`lookup`, which returns nothing under Argo CD (H1), or if a LIST parameter's
+JSONPath is not `.items` (an empty list then fails the whole render, T7); the
+renderer prints `<no value>` for a missing key read with `index`, as Template
+Operator does (T6); the render tests pass
 `--api-versions`, as Argo CD does (H2); golden unchanged.
 
 **Story G.21 — Gateways are internal and labelled** 📝 *Draft*
@@ -293,7 +296,8 @@ Done: the bootstrap chart deploys the rate limit service with its tier
 configuration from bootstrap values, with today's values as defaults
 (autoscaler, disruption budget, spread, resources, probes, the image by digest;
 Redis as one server or Sentinel, its address and Secret as values); the
-configuration `ConfigMap` named by a hash of its content (S1); the
+configuration `ConfigMap` named by a hash of its content, and the image
+pinned by the digest of a multi-arch image (S1); the
 child renders the rate limit `EnvoyFilter` (one entry per API, matched on
 its host and path; descriptors `tenant`, `api`, `tier` from the caller's
 role for the API by exact text, the lowest when none (ADR-0003, M20), `azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`

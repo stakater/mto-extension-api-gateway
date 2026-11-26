@@ -1,0 +1,24 @@
+# The fixture of docs/acceptance.md. team-a-outside is not in the mesh.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a-dev
+  labels: { stakater.com/tenant: team-a, istio.io/dataplane-mode: ambient, istio.io/use-waypoint: mto-api-gateway-waypoint }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a-test
+  labels: { stakater.com/tenant: team-a, istio.io/dataplane-mode: ambient }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a-outside
+  labels: { stakater.com/tenant: team-a }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mto-api-gateways
+  labels: { istio.io/dataplane-mode: ambient }

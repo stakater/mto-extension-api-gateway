@@ -99,7 +99,7 @@ part of the extension: it stays with the platform, unchanged.
 | `429` without `X-RateLimit-*` headers | the same | ✅ |
 | Shared rate limit service (`envoyproxy/ratelimit`), tiers and rates | deployed by the bootstrap chart from platform values | ✅ |
 | Its scaling, disruption budget, spread, resources and Redis health probes | the same defaults, as platform values `rateLimit.service.*` (design §3.1) | ✅ |
-| Its pods restart when the limits change | the same: a limit change creates a new `ConfigMap` and rolls the pods; a changed file crashed the service on kind (S1) | ✅ |
+| Its pods restart when the limits change | the same: a limit change creates a new `ConfigMap` and rolls the pods (S1) | ✅ |
 | Redis with Sentinel, persistence, password, access only from the limiter | Redis provided by the platform: one server or Sentinel (`rateLimit.redis.type`), address and password Secret | ➖ |
 
 ## 8. Backends

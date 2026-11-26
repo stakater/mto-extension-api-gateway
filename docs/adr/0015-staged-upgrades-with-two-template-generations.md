@@ -80,8 +80,9 @@ rollout:
     1. The rate limit service restarts one pod at a time (one extra pod
        first, none unavailable). A change of the limits creates a new
        `ConfigMap`, whose name carries a hash of its content, and so rolls
-       the pods: no running pod reads a changed file, which crashed the
-       service on kind (S1). If the service is ever unavailable, traffic
+       the pods, as today's chart does, so the change applies at once,
+       not when the kubelet next syncs the file (S1). If the service is ever
+       unavailable, traffic
        keeps flowing when the platform chose fail open
        (`rateLimit.failureModeAllow`, decided in G.5).
     1. The design stays closed in any apply order (ADR-0004), so a switch

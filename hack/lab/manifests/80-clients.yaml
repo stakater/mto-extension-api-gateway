@@ -1,0 +1,17 @@
+# intruder: a pod in the mesh, in another namespace of the tenant. outsider: a pod outside the mesh.
+# Both run lib/client.py from the ConfigMap lab-client, which lab.sh creates in each namespace.
+apiVersion: v1
+kind: Pod
+metadata: { name: intruder, namespace: team-a-test }
+spec:
+  containers:
+    - { name: c, image: "python:3.12.7-alpine", command: ["sleep", "infinity"], volumeMounts: [{ name: lab, mountPath: /lab }] }
+  volumes: [{ name: lab, configMap: { name: lab-client } }]
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: outsider, namespace: team-a-outside }
+spec:
+  containers:
+    - { name: c, image: "python:3.12.7-alpine", command: ["sleep", "infinity"], volumeMounts: [{ name: lab, mountPath: /lab }] }
+  volumes: [{ name: lab, configMap: { name: lab-client } }]

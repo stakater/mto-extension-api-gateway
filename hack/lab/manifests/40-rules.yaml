@@ -1,0 +1,28 @@
+# The per-API rules (design §3.5): host and path, the closed rule, azp required, the API's issuers.
+# orders also accepts today's role names as exact values (migration.legacyRoles, ADR-0006).
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: api.orders, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
+  action: ALLOW
+  rules:
+    - from: [{ source: { requestPrincipals: ["https://idp-a.lab/realms/apis/*"] } }]
+      to: [{ operation: { hosts: ["orders.team-a.apis.example.com", "orders.team-a.apis.example.com:*"], paths: ["/orders/v2", "/orders/v2/*"] } }]
+      when:
+        - key: request.auth.claims[allowed_apis]
+          values: ["api.team-a.orders", "api.team-a.orders.*", "api-orders-consumer-gold", "api-orders-consumer-silver", "api-orders-consumer-bronze"]
+        - { key: "request.auth.claims[azp]", values: ["*"] }
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: api.payments, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
+  action: ALLOW
+  rules:
+    - from: [{ source: { requestPrincipals: ["https://idp-a.lab/realms/apis/*"] } }]
+      to: [{ operation: { hosts: ["orders.team-a.apis.example.com", "orders.team-a.apis.example.com:*"], paths: ["/payments/v1", "/payments/v1/*"] } }]
+      when:
+        - { key: "request.auth.claims[allowed_apis]", values: ["api.team-a.payments", "api.team-a.payments.*"] }
+        - { key: "request.auth.claims[azp]", values: ["*"] }

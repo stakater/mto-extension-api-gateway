@@ -1,0 +1,64 @@
+# The team render (design §3.2) and the tenant's token check and header filter (§3.3).
+# The lab listener is plain HTTP; TLS is not in this spike.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: mto-api-gateway
+  namespace: team-a-dev
+  labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/managed: "true" }
+  annotations: { networking.istio.io/service-type: ClusterIP }
+spec:
+  gatewayClassName: istio
+  infrastructure:
+    # Istio copies these onto the Deployment, Service and ServiceAccount it creates for the gateway, so they
+    # carry the extension's label too (the preflight's name check, design §9).
+    labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/gateway: "true", api-gateway.stakater.com/managed: "true" }
+  listeners:
+    - name: tenant
+      hostname: "*.team-a.apis.example.com"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        kinds: [{ kind: HTTPRoute }]
+        namespaces: { from: Selector, selector: { matchLabels: { stakater.com/tenant: team-a } } }
+---
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata: { name: mto-api-gateway-jwt, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
+  jwtRules:
+    - issuer: https://idp-a.lab/realms/apis
+      jwks: '__JWKS_A__'
+      audiences: [apis]
+      fromHeaders: [{ name: Authorization, prefix: "Bearer " }]
+      outputClaimToHeaders:
+        - { header: x-sub, claim: azp }
+        - { header: x-roles, claim: allowed_apis }
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata: { name: mto-api-gateway-strip-headers, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  workloadSelector: { labels: { gateway.networking.k8s.io/gateway-name: mto-api-gateway } }
+  configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter: { name: envoy.filters.http.jwt_authn }
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: api-gateway.strip_claim_headers
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+            mutations:
+              request_mutations:
+                - { remove: x-sub }
+                - { remove: x_sub }
+                - { remove: x-roles }
+                - { remove: x_roles }

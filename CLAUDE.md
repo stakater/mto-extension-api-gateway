@@ -110,11 +110,15 @@ story-citation checks. Regenerate the golden only after an intended change:
    the admission policy `mto-api-gateway-no-adoption` refuses an update that
    adds the label; the preflight names a reserved name taken by another
    owner.
+1. **Templates survive empty lists and missing keys** (T6, T7): a LIST
+   parameter's JSONPath is always `.items`, never a `[*]` path, which fails on
+   an empty list; an optional key is read with `index` and `default ""`, since
+   `index` prints `<no value>` and a field path fails the render.
 1. **The bootstrap chart renders the same under Helm and Argo CD** (design
    §9): no `lookup`; required APIs checked with `.Capabilities`; live checks
    only in the preflight hook `Job`, never in a Template. A rate limit
-   configuration change creates a new `ConfigMap` and rolls the pods; a
-   running pod never reads a changed file (S1).
+   configuration change creates a new `ConfigMap` and rolls the pods, as
+   today (S1).
 
 ## Public repository
 
@@ -138,6 +142,7 @@ names of `docs/acceptance.md` (`team-a`, `orders`, `shop`) and
 | `docs/diagrams.md` | C4 and sequence diagrams. |
 | `docs/adr/` | Architecture Decision Records. |
 | `docs/planning/` | One planning doc per story, from `TEMPLATE.md`. |
+| `hack/lab/` | The kind lab (G.19): `make lab-up lab-test` checks the platform behaviours the design depends on. |
 
 **ADRs are immutable once accepted.** Supersede, don't edit.
 

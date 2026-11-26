@@ -81,7 +81,7 @@ platform may also trust several issuers, or give a tenant its own
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-token-floor` | `DENY` for every request without a valid token from one of the platform's issuers (`auth.issuers`), on every pod with the gateway label (M6, M12) |
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-default-deny` | `ALLOW` with no rules on the same pods: whatever no API rule allows is refused (M12) |
 | `Deployment`, `Service`, `HorizontalPodAutoscaler`, `PodDisruptionBudget` | `ratelimit` in `mto-api-gateways` | the rate limit service (Envoy's rate limit API), with today's values as defaults: 3 to 8 pods at 70 % CPU, at least 2 available during a drain, spread over nodes and zones, one extra pod and none unavailable during a rollout, the image pinned by digest, and health probes that fail without Redis. The Redis address (one server or Sentinel) and its password Secret are values (ADR-0003) |
-| `ConfigMap` | `ratelimit-config-<hash>` | the tier configuration, from bootstrap values, immutable. The name carries a hash of the content, so a change of the limits creates a new `ConfigMap` and rolls the pods; no running pod reads a changed file, which crashed the service on kind (S1) |
+| `ConfigMap` | `ratelimit-config-<hash>` | the tier configuration, from bootstrap values, immutable. The name carries a hash of the content, so a change of the limits creates a new `ConfigMap` and rolls the pods at once, as today's chart does. The service could reload the file itself, but only after the kubelet syncs it, up to about 90 s later (S1) |
 | `Job` (Helm hook) | `mto-api-gateway-preflight` | the live preflight, before every install, upgrade and Argo CD sync (§9, H3) |
 | `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-tenants` | what tenant users may not do to a gateway (ADR-0008) |
 | `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-no-adoption` | refuses any update that adds the label `api-gateway.stakater.com/managed` to an object without it, so Template Operator never takes over a live object (ADR-0001, T10); applied before the parent `TemplateInstance` |
@@ -175,7 +175,8 @@ metadata:
 spec:
   gatewayClassName: istio
   infrastructure:
-    labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/gateway: "true" }
+    # Istio copies these onto the Deployment, Service and ServiceAccount it creates (observed, G.19)
+    labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/gateway: "true", api-gateway.stakater.com/managed: "true" }
     parametersRef: { group: "", kind: ConfigMap, name: mto-api-gateway-infra }
   listeners:
     - name: tenant
@@ -786,7 +787,7 @@ request.
   callers of the API's paths are refused; allowing named internal callers is
   G.17.
 - **A change of the rate limits restarts the rate limit service,** one pod at
-  a time, because a changed file crashed it on kind (S1). The service exports
+  a time, as today, so the change applies at once (S1). The service exports
   no metrics, as today; observability is G.14.
 - **An internal host is a platform grant per tenant** (ADR-0009). A moved API
   keeps its internal host only after the old gateway's `Route` for it is

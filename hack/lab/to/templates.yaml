@@ -1,0 +1,99 @@
+# Template Operator checks (lib/to_checks.py). Namespaces with the label lab.stakater.com/to-check may use them.
+# lab-api-gateway has the shape of the team render: reserved names and the extension's label (ADR-0001).
+# The gateway class doesn't exist, so Istio starts no pods for these Gateways.
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata: { name: lab-api-gateway, namespace: mto-api-gateways }
+spec:
+  targetNamespaces: { selector: { matchLabels: { lab.stakater.com/to-check: "true" } } }
+  sync: { mode: strict }
+  parameters:
+    - { name: version, value: "1" }
+  gotemplate: |
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: Gateway
+    metadata:
+      name: mto-api-gateway
+      namespace: {{ .instance.namespace }}
+      labels: { api-gateway.stakater.com/managed: "true" }
+    spec:
+      gatewayClassName: lab-unused
+      listeners: [{ name: tenant, port: 80, protocol: HTTP, hostname: "*.lab.example.com" }]
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: mto-api-gateway-infra
+      namespace: {{ .instance.namespace }}
+      labels: { api-gateway.stakater.com/managed: "true" }
+    data: { owner: extension, version: "{{ .parameters.version }}" }
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: mto-api-gateway-status.{{ .instance.name }}
+      namespace: {{ .instance.namespace }}
+      labels: { api-gateway.stakater.com/managed: "true" }
+    data: { status: ok }
+---
+# Another extension, with no label of ours, that takes over a live object on purpose (like a migration).
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata: { name: lab-other-extension, namespace: mto-api-gateways }
+spec:
+  targetNamespaces: { selector: { matchLabels: { lab.stakater.com/to-check: "true" } } }
+  sync: { mode: revert }
+  gotemplate: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: appproject-x, namespace: {{ .instance.namespace }} }
+    data: { owner: other-extension }
+---
+# T7: what a LIST parameter gives the template, with objects and with none.
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata: { name: lab-list, namespace: mto-api-gateways }
+spec:
+  targetNamespaces: { selector: { matchLabels: { lab.stakater.com/to-check: "true" } } }
+  sync: { mode: revert }
+  parameters:
+    - { name: routes }
+  gotemplate: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: mto-api-gateway-list-probe.{{ .instance.name }}, namespace: {{ .instance.namespace }}, labels: { api-gateway.stakater.com/managed: "true" } }
+    data:
+      routesType: {{ printf "%T" .parameters.routes | quote }}
+      routesLen: {{ len .parameters.routes | quote }}
+      routesJson: {{ toJson .parameters.routes | trunc 300 | quote }}
+---
+# T6: a missing key on a listed object, read with a field path, and with index.
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata: { name: lab-missing-dot, namespace: mto-api-gateways }
+spec:
+  targetNamespaces: { selector: { matchLabels: { lab.stakater.com/to-check: "true" } } }
+  sync: { mode: revert }
+  parameters:
+    - { name: routes }
+  gotemplate: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: mto-api-gateway-dot-probe, namespace: {{ .instance.namespace }}, labels: { api-gateway.stakater.com/managed: "true" } }
+    data:
+      api: "{{ range .parameters.routes }}{{ .metadata.annotations.api }}{{ end }}"
+---
+apiVersion: templates.v2.stakater.com/v2alpha1
+kind: Template
+metadata: { name: lab-missing-index, namespace: mto-api-gateways }
+spec:
+  targetNamespaces: { selector: { matchLabels: { lab.stakater.com/to-check: "true" } } }
+  sync: { mode: revert }
+  parameters:
+    - { name: routes }
+  gotemplate: |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata: { name: mto-api-gateway-index-probe, namespace: {{ .instance.namespace }}, labels: { api-gateway.stakater.com/managed: "true" } }
+    data:
+      api: "{{ range .parameters.routes }}{{ index (default (dict) (index .metadata "annotations")) "api" }}{{ end }}"
