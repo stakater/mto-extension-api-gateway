@@ -1,7 +1,8 @@
 # ADR-0002: One gateway per tenant, requested by the team, in the team's namespace
 
 - **Status:** Proposed
-- **Date:** 2026-11-16 (the gateway's fixed name decided on 2026-11-26)
+- **Date:** 2026-11-16 (the gateway's fixed name, and why the request is a
+  `TemplateInstance` rather than an annotation, recorded on 2026-11-26)
 
 ## Context
 
@@ -24,11 +25,34 @@ otherwise make the operator read what its service account can read, through
 
 The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
 
+The Multi-Tenant Operator binds a tenant's owners, editors and viewers to
+Kubernetes' `admin`, `edit` and `view` roles in each tenant namespace. An
+owner may add its own label or annotation to a tenant namespace; an editor
+may not change a namespace at all. Namespaces and their metadata are usually
+created through the `Tenant`, which lives in the platform's GitOps repository;
+a tenant's own Argo CD project usually may not change cluster-wide objects
+such as namespaces (T11, observed on kind with the Multi-Tenant Operator
+1.11.1).
+
 ## Decision
 
 - **A team asks for its tenant's gateway** with one `TemplateInstance` of the
   platform's `api-gateway` Template, in the tenant namespace where the gateway
-  should run. The instance has **no parameters**: every parameter of
+  should run. We chose an object the team owns, not an annotation on the
+  `Tenant` or the namespace, because:
+    1. **any team member with `edit` can ask**, not only the tenant owner;
+    1. **the team keeps it in its own GitOps repository**, next to its `api`
+       instances, with no pull request to the platform's repository; an
+       annotation on the `Tenant` or on a namespace made through it is the
+       platform's change;
+    1. **the request has its own status** and its own lifecycle: deleting it
+       removes the gateway;
+    1. **the platform still controls what matters:** which tenants may ask
+       (`tenants.mode`, `tenants.list`) and every security setting.
+- **Tenant users get the right to create `TemplateInstance`s** through a
+  ClusterRole of the bootstrap chart, labelled `aggregate-to-edit` and
+  `aggregate-to-admin`. Without it, no tenant user may create one (T11).
+- **The request has no parameters:** every parameter of
   `api-gateway` is a `disableOverride` default. A team tunes a few
   non-security settings with validated annotations on the request (ADR-0012).
 - **The request renders the gateway, not its policy:** the `Gateway`, its
@@ -97,6 +121,16 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
 - **The gateway in the platform namespace, on request.** Rejected by the code
   owner on 2026-11-16 in favour of the team's namespace: the team sees and
   pays for its own gateway pods.
+- **An annotation on the `Tenant`** (the Argo CD extension's opt-in).
+  Not chosen: only the platform edits a `Tenant`, so every gateway and every
+  setting change becomes a request to the platform team, and a second
+  annotation must name the namespace the gateway runs in.
+- **An annotation on a tenant namespace.** Not chosen: only the tenant owner
+  may set it, not an editor (observed, T11); and under GitOps a tenant
+  namespace and its annotations come from the `Tenant` in the platform's
+  repository, so it is the platform's change again. Set by hand with
+  `kubectl`, it is drift that no repository holds. It stays a fit if the
+  platform, not the team, should switch gateways on.
 - **A `TemplateInstance` with parameters (hosts, replicas, security
   switches).** Rejected: a parameter can be set wrongly or read from a source
   the team shouldn't reach; with none, nothing in the request can be wrong.
