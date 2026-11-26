@@ -54,10 +54,10 @@ the waypoint (M4, M21, Q5, Q21); Template Operator's empty LIST
 and missing-key behaviour (T6, T7); the default Service type of a gateway
 (M13); that an `AuthorizationPolicy` scoped by host and path keeps two APIs
 on one host apart, with segment prefixes, `//`, `/./`, `/../`, `%2F`, a query
-string, a path in another case, and a rewrite on the route (M16, Q16); whether
-a render can detect and refuse a name that an existing object
-already holds, and that deleting a request never removes such an object (T4,
-issue #11); that no request passes while the policies are applied in any order
+string, a path in another case, and a rewrite on the route (M16, Q16); that a
+name an existing object holds is refused by the admission policy, so Template
+Operator applies nothing, and that deleting a request never removes such an
+object (T4, T10, issue #11); that no request passes while the policies are applied in any order
 (issue #10); the metrics port of the gateway and the waypoint (M23); kubelet
 probes under STRICT mTLS (M24); a change of the rate limit configuration (S1);
 `gateway-baseline.md` rows updated.
@@ -100,7 +100,7 @@ Done: bootstrap chart with the parent `Template` and `TemplateInstance`; the
 parent publishes the `api-gateway` Template (only tenant namespaces, sync
 `strict`, every parameter `disableOverride`: `tenantOf`, `owner`, granted
 extra host names, gateway settings); a team's parameterless request renders,
-in its own namespace, `Gateway` `<request>` with the listeners of ADR-0002 and
+in its own namespace, `Gateway` `<request>` (renamed `mto-api-gateway` in G.29) with the listeners of ADR-0002 and
 ADR-0009, its autoscaling ConfigMap and its certificates, or only a status
 ConfigMap that says why not; one owner per tenant (the oldest valid request);
 invalid tenant names, refused host names and refused requests listed; the
@@ -138,6 +138,24 @@ Done: the team render sets `networking.istio.io/service-type: ClusterIP` in
 the `Gateway`'s own annotations (Istio ignores it in `infrastructure`, M13)
 and the platform label in the `Gateway`'s `infrastructure`; render check and
 mutation test; golden regenerated. Satisfies **AC-R-7**.
+
+**Story G.29 — The extension never takes over a live object** 📝 *Draft*
+
+As a platform team, I want the extension to leave alone every object that it
+didn't create, so that no request can change or delete a production gateway
+(issue #11).
+
+Done: the gateway is always `mto-api-gateway`, and every object rendered
+outside `mto-api-gateways` has a name that starts with `mto-api-` or `api.`
+and the label `api-gateway.stakater.com/managed` (the G.1 code moves from
+`<request>` names); the bootstrap chart's `ValidatingAdmissionPolicy`
+`mto-api-gateway-no-adoption`, applied before the parent; the preflight check
+for a reserved name without the label; render checks for the names and the
+label, with mutation tests; live on the kind lab with Template Operator: a
+hand-made object with a reserved name makes the instance apply nothing and
+its status name the object, the object stays unchanged, and deleting the
+request leaves it; another extension's takeover still works (ADR-0001,
+ADR-0002). Satisfies **AC-LIFE-7**.
 
 **Story G.2 — The security baseline** 📝 *Draft*
 
@@ -210,7 +228,7 @@ As an API team, I want to see which of my `api` instances serve and which
 routes are not APIs, and why, so that I can fix an API before anyone calls it.
 
 Done: the child lists the tenant's `TemplateInstance`s, `HTTPRoute`s and
-`Service`s by the tenant label; the status ConfigMap `<request>-apis` in the gateway's namespace lists
+`Service`s by the tenant label; the status ConfigMap `mto-api-gateway-apis` in the gateway's namespace lists
 APIs, routes that are not APIs, duplicate API names (oldest wins), path
 conflicts on one host (ADR-0005) and invalid backends; a tenant with no
 routes renders cleanly. Satisfies **AC-OPS-2** (route parts).
@@ -221,7 +239,7 @@ As an API team, I want my backend to accept calls only from my tenant's
 gateway, so that nobody in the cluster can skip the gateway's checks.
 
 Done: per backend namespace with a locked API, a waypoint
-`api-gateway-waypoint` (autoscaled, platform values); per backend Service, an
+`mto-api-gateway-waypoint` (autoscaled, platform values); per backend Service, an
 Istio `AuthorizationPolicy` on the Service, enforced by the waypoint: `DENY`
 every path but `backendLock.publicPaths` from every identity but the tenant
 gateway's (ADR-0007); the team's `backendLock: "off"` and
@@ -316,7 +334,7 @@ instance's `internalHost` (ADR-0009). Satisfies **AC-ISO-2** (live),
 **Story G.6 — Status, monitoring and preflight** 📝 *Draft* — gateway
 `Programmed`, refused knobs, and a `Route` the router didn't admit, in the
 request's status; namespaces outside the mesh and hosts
-outside the tenant's hostnames in `<request>-apis`; a `PodMonitor` per gateway
+outside the tenant's hostnames in `mto-api-gateway-apis`; a `PodMonitor` per gateway
 and per waypoint (`monitoring.podMonitor.*`, M23); the preflight in three
 layers (values schema, APIs by `.Capabilities`, a hook `Job` for the live
 state) for Service Mesh, the Gateway API and Istio APIs, Template Operator,

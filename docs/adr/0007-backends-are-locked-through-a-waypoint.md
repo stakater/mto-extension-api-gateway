@@ -35,7 +35,7 @@ production, and an API must move with nothing broken (docs/migration.md).
 - **The lock follows today's pattern: a waypoint and an L7 rule.** For every
   backend Service of an API (every `backendRef`, mirrors included), the
   tenant's child renders, in the route's namespace:
-    1. the waypoint `api-gateway-waypoint` (class `istio-waypoint`), one per
+    1. the waypoint `mto-api-gateway-waypoint` (class `istio-waypoint`), one per
        namespace, autoscaled with platform values (default 3 to 5 pods, as
        today), with a `PodMonitor` for its metrics when the platform's
        monitoring is on (M23, as today);

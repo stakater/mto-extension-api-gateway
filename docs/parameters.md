@@ -19,7 +19,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 
 | Today | In this extension | Place | Story |
 |---|---|---|---|
-| `gateway.name` | the request's name: `Gateway` `<request>` | team input (the name only) | G.1 ✅ |
+| `gateway.name` | none: the gateway is always `mto-api-gateway`, a reserved name (ADR-0002); the request's name only names its status ConfigMap | fixed | G.29 |
 | `gateway.namespace` | the request's namespace | team input | G.1 ✅ |
 | `hosts.external` | the `api` instance's `host`. It is accepted only under `*.<tenant>.<base domain>`, a host name the platform granted to the tenant, or a shared host with a granted prefix (ADR-0009) | team input, bounded by platform values | G.1 ✅, G.26 |
 | `gateway.pathPrefix` (the published path) | the `api` instance's `path` | team input | G.26 |
@@ -38,7 +38,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `auth.enabled` | the token floor, the default deny and the allowed-API rules are always rendered (ADR-0004) | fixed | G.2 |
 | `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003); an API's limit is the `api` instance's `rateLimit` parameter (ADR-0004) | team, within platform bounds | G.5 |
 | `security.allowGatewayAccessOnly`, `security.allowDirectBackendAccess` | the `api` instance's `backendLock: "on"` (default) or `"off"`; the platform can lock a tenant (ADR-0007) | team, within platform bounds | G.4 |
-| `security.waypoint.create`, `security.waypoint.name`, `.autoscaling` | the child renders one waypoint `api-gateway-waypoint` per namespace with a locked API, autoscaled with platform values (ADR-0007) | platform value | G.4 |
+| `security.waypoint.create`, `security.waypoint.name`, `.autoscaling` | the child renders one waypoint `mto-api-gateway-waypoint` per namespace with a locked API, autoscaled with platform values (ADR-0007) | platform value | G.4 |
 | `security.publicPaths` | `backendLock.publicPaths`, a platform list of exact paths | platform value | G.4 |
 | `security.backendPodLabels` (STRICT mTLS on the backend pods; no file sets it) | `backendLock.strictMtlsTenants`: STRICT on the pods each locked Service selects, per tenant (ADR-0007) | platform value | G.4 |
 
@@ -188,7 +188,7 @@ per tenant.
 | the gateway's name and every gateway-level object name | the request's name |
 | the listener host name `*.<tenant>.<base domain>` | the tenant and `gateway.baseDomain` |
 | the allowed-API rule `api.<tenant>.<api>` | the prefix, the tenant, the `api` instance's name |
-| the backend lock's principal `cluster.local/ns/<namespace>/sa/<request>-istio` | the gateway's namespace and name |
+| the backend lock's principal `cluster.local/ns/<namespace>/sa/mto-api-gateway-istio` | the gateway's namespace and name |
 | the backend lock's target | the backend `Service` (the policy's `targetRefs`), enforced by the namespace's waypoint |
 | which request owns the tenant's gateway | the oldest valid request (`owner`) |
 

@@ -35,9 +35,9 @@ One Helm chart, rendered once per cluster, and Template Operator v2 objects
 |---|---|---|
 | `mto-extension-api-gateway-bootstrap` | once per cluster, by Helm, in the platform's namespace `mto-api-gateways` | the parent `Template` and `TemplateInstance`, the child Template `api-gateway-policy` (one per template generation in the release, `api-gateway-policy-g1`, ADR-0015), the token floor and default deny in the Istio root namespace (ADR-0004), the rate limit service (ADR-0003), the admission policy (ADR-0008) |
 | The parent `TemplateInstance` | by the chart | the team-facing **`api-gateway` and `api` Templates**, the skipped-tenants ConfigMap, and **one child `TemplateInstance` per tenant that has a gateway** (ADR-0013) |
-| A `TemplateInstance` of `api-gateway` | by the team, in the tenant namespace where its gateway should run; no parameters; optional knob annotations (ADR-0012) | **in its own namespace**: `Gateway` `<request>`, its settings ConfigMap, its certificates, and the request's status ConfigMap |
+| A `TemplateInstance` of `api-gateway` | by the team, in the tenant namespace where its gateway should run; no parameters; optional knob annotations (ADR-0012) | **in its own namespace**: `Gateway` `mto-api-gateway`, its settings ConfigMap, its certificates, and the request's status ConfigMap |
 | A `TemplateInstance` of `api` | by the team, one per API, in the backend's namespace; checked parameters (ADR-0005) | **in its own namespace**: the API's `HTTPRoute` `api.<api>` and its status ConfigMap `api.<api>` |
-| A tenant's child `TemplateInstance` | by the parent, in `mto-api-gateways` | the tenant's gateway policy: `RequestAuthentication`, the platform's `EnvoyFilter`s, `Telemetry`; **per API route** the allowed-API rule (in the gateway's namespace) and the backend lock (in the route's namespace); the tenant's status ConfigMap `<request>-apis` |
+| A tenant's child `TemplateInstance` | by the parent, in `mto-api-gateways` | the tenant's gateway policy: `RequestAuthentication`, the platform's `EnvoyFilter`s, `Telemetry`; **per API route** the allowed-API rule (in the gateway's namespace) and the backend lock (in the route's namespace); the tenant's status ConfigMap `mto-api-gateway-apis` |
 
 **How the request stays trusted.** A team writes only the `TemplateInstance`'s
 namespace, name and annotations. Every parameter of `api-gateway` is a
@@ -84,6 +84,7 @@ platform may also trust several issuers, or give a tenant its own
 | `ConfigMap` | `ratelimit-config-<hash>` | the tier configuration, from bootstrap values, immutable. The name carries a hash of the content, so a change of the limits creates a new `ConfigMap` and rolls the pods; no running pod reads a changed file, which crashed the service on kind (S1) |
 | `Job` (Helm hook) | `mto-api-gateway-preflight` | the live preflight, before every install, upgrade and Argo CD sync (§9, H3) |
 | `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-tenants` | what tenant users may not do to a gateway (ADR-0008) |
+| `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-no-adoption` | refuses any update that adds the label `api-gateway.stakater.com/managed` to an object without it, so Template Operator never takes over a live object (ADR-0001, T10); applied before the parent `TemplateInstance` |
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -155,27 +156,27 @@ exempted API gets the full tier tree under its own entry (M18).
 
 | Kind | Name | What it does |
 |---|---|---|
-| `Gateway` (class `istio`, ADR-0010) | `api-gateway` | listener `tenant` for `*.team-a.apis.example.com` (and `extra-<n>` per granted host, and `entry` with no hostname when the tenant has shared-host prefixes or internal hosts, ADR-0009), routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); `ClusterIP` Service and the gateway label (M13, ADR-0002); Service Mesh deploys `api-gateway-istio` (M3) |
-| `ConfigMap` | `api-gateway-infra` | `spec.infrastructure.parametersRef` target: autoscaler and disruption budget (M3) |
-| `Certificate` (or a platform-provided Secret) | `api-gateway-tls`, `api-gateway-tls-extra-<n>` | one per listener (Q10); the `entry` listener's Secret `api-gateway-entry-tls` comes from OpenShift's service CA (R3) |
-| OpenShift `Route` | `api-gateway-shared-<n>` | only with shared-host prefixes: one reencrypt `Route` per granted prefix, to the Service `api-gateway-istio` (ADR-0009, R1) |
-| OpenShift `Route` | `api-gateway-internal-<n>` | only with internal hosts: one reencrypt `Route` per granted internal host, with no path, to the Service `api-gateway-istio`, as today's internal host (ADR-0009) |
-| `PodMonitor` | `api-gateway` | the gateway pods' metrics: the port `metrics`, `/stats/prometheus`, every `monitoring.podMonitor.interval` (M23); only when `monitoring.podMonitor.enabled`, as today |
-| `ConfigMap` | `api-gateway-status` | `ok` with the tenant and host names, or `refused` with the reason |
+| `Gateway` (class `istio`, ADR-0010) | `mto-api-gateway` (always; ADR-0002) | listener `tenant` for `*.team-a.apis.example.com` (and `extra-<n>` per granted host, and `entry` with no hostname when the tenant has shared-host prefixes or internal hosts, ADR-0009), routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); `ClusterIP` Service and the gateway label (M13, ADR-0002); Service Mesh deploys `mto-api-gateway-istio` (M3) |
+| `ConfigMap` | `mto-api-gateway-infra` | `spec.infrastructure.parametersRef` target: autoscaler and disruption budget (M3) |
+| `Certificate` (or a platform-provided Secret) | `mto-api-gateway-tls`, `mto-api-gateway-tls-extra-<n>` | one per listener (Q10); the `entry` listener's Secret `mto-api-gateway-entry-tls` comes from OpenShift's service CA (R3) |
+| OpenShift `Route` | `mto-api-gateway-shared-<n>` | only with shared-host prefixes: one reencrypt `Route` per granted prefix, to the Service `mto-api-gateway-istio` (ADR-0009, R1) |
+| OpenShift `Route` | `mto-api-gateway-internal-<n>` | only with internal hosts: one reencrypt `Route` per granted internal host, with no path, to the Service `mto-api-gateway-istio`, as today's internal host (ADR-0009) |
+| `PodMonitor` | `mto-api-gateway` | the gateway pods' metrics: the port `metrics`, `/stats/prometheus`, every `monitoring.podMonitor.interval` (M23); only when `monitoring.podMonitor.enabled`, as today |
+| `ConfigMap` | `mto-api-gateway-status.api-gateway` | `ok` with the tenant and host names, or `refused` with the reason |
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: api-gateway
+  name: mto-api-gateway                  # fixed and reserved, never the request's name (ADR-0002)
   namespace: team-a-dev
-  labels: { stakater.com/tenant: team-a }
+  labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/managed: "true" }
   annotations: { networking.istio.io/service-type: ClusterIP }   # on the Gateway itself (M13)
 spec:
   gatewayClassName: istio
   infrastructure:
     labels: { stakater.com/tenant: team-a, api-gateway.stakater.com/gateway: "true" }
-    parametersRef: { group: "", kind: ConfigMap, name: api-gateway-infra }
+    parametersRef: { group: "", kind: ConfigMap, name: mto-api-gateway-infra }
   listeners:
     - name: tenant
       hostname: "*.team-a.apis.example.com"
@@ -183,7 +184,7 @@ spec:
       protocol: HTTPS
       tls:
         mode: Terminate
-        certificateRefs: [{ name: api-gateway-tls }]
+        certificateRefs: [{ name: mto-api-gateway-tls }]
       allowedRoutes:
         kinds: [{ kind: HTTPRoute }]
         namespaces:
@@ -196,19 +197,19 @@ spec:
 
 | Kind | Name | What it does |
 |---|---|---|
-| `RequestAuthentication` | `api-gateway-jwt` | targets the `Gateway`: one rule per issuer that the tenant or one of its APIs uses, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
-| `EnvoyFilter` | `api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
-| `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (the caller's highest tier role for the API, by exact text; the lowest when none, ADR-0003, M20), `azp` (M18) |
-| `EnvoyFilter` | `api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
-| `Telemetry` | `api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers, and, when the platform configures tracing, the platform's sampling rate (default 100 %, as today, ADR-0012) |
-| `ConfigMap` | `api-gateway-apis` | the tenant's APIs, routes that are not APIs, conflicts, refused knobs (§7) |
+| `RequestAuthentication` | `mto-api-gateway-jwt` | targets the `Gateway`: one rule per issuer that the tenant or one of its APIs uses, with its audiences (ADR-0004), token only from `Authorization` (M15); claim headers `x-sub` (`azp`), `x-roles` (`allowed_apis`) and the team's extras (ADR-0012) |
+| `EnvoyFilter` | `mto-api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
+| `EnvoyFilter` | `mto-api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (the caller's highest tier role for the API, by exact text; the lowest when none, ADR-0003, M20), `azp` (M18) |
+| `EnvoyFilter` | `mto-api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
+| `Telemetry` | `mto-api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers, and, when the platform configures tracing, the platform's sampling rate (default 100 %, as today, ADR-0012) |
+| `ConfigMap` | `mto-api-gateway-apis` | the tenant's APIs, routes that are not APIs, conflicts, refused knobs (§7) |
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
-metadata: { name: api-gateway-jwt, namespace: team-a-dev }
+metadata: { name: mto-api-gateway-jwt, namespace: team-a-dev }
 spec:
-  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }]
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
   jwtRules:                                   # one per issuer that team-a or its APIs use
     - issuer: https://sso.example.com/realms/apis
       audiences: [apis]
@@ -220,10 +221,10 @@ spec:
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
-metadata: { name: api-gateway-strip-headers, namespace: team-a-dev }
+metadata: { name: mto-api-gateway-strip-headers, namespace: team-a-dev }
 spec:
   workloadSelector:
-    labels: { gateway.networking.k8s.io/gateway-name: api-gateway }
+    labels: { gateway.networking.k8s.io/gateway-name: mto-api-gateway }
   configPatches:
     - applyTo: HTTP_FILTER
       match:
@@ -250,10 +251,10 @@ spec:
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
-metadata: { name: api-gateway-ratelimit, namespace: team-a-dev }
+metadata: { name: mto-api-gateway-ratelimit, namespace: team-a-dev }
 spec:
   workloadSelector:
-    labels: { gateway.networking.k8s.io/gateway-name: api-gateway }
+    labels: { gateway.networking.k8s.io/gateway-name: mto-api-gateway }
   configPatches:
     - applyTo: HTTP_FILTER
       match:
@@ -369,7 +370,7 @@ reason). An invalid parameter, or a tenant with no gateway, renders no route.
 
 For a backend outside the cluster (ADR-0014), the instance sets
 `externalHost` instead of `service`, and also renders the `ExternalName`
-Service `api-<api>-external`; the route points to it and rewrites the `Host`
+Service `mto-api-<api>-external`; the route points to it and rewrites the `Host`
 header to the external host. The tenant's child renders, in the gateway's
 namespace, the `ServiceEntry` and the `DestinationRule` `api.<api>.external`
 (TLS mode, SNI, the Secret), as today's chart does:
@@ -390,7 +391,7 @@ metadata:
   namespace: team-a-dev
   annotations: { api-gateway.stakater.com/api: orders }
 spec:
-  parentRefs: [{ name: api-gateway, namespace: team-a-dev }]   # the tenant's gateway, from the platform
+  parentRefs: [{ name: mto-api-gateway, namespace: team-a-dev }]   # the tenant's gateway, from the platform
   hostnames: ["orders.team-a.apis.example.com"]
   rules:
     - matches: [{ path: { type: PathPrefix, value: /orders/v2 } }]
@@ -409,23 +410,23 @@ For the API `orders` (the route `api.orders` in `team-a-dev`, host
 | Kind | Namespace | Name | What it does |
 |---|---|---|---|
 | `AuthorizationPolicy` `ALLOW` | the gateway's (`team-a-dev`) | `api.orders` | targets the `Gateway`; the route's host and path (or exact operations); the closed rule `api.team-a.orders` (ADR-0006); `azp` and every mapped claim required; the API's issuers only (ADR-0004) |
-| `AuthorizationPolicy` `DENY` | the route's | `api.orders.<service>` | one per backend Service, enforced by the namespace's waypoint: `DENY` every path but the platform's open paths, from every identity but `api-gateway-istio` (ADR-0007); not rendered when the team set `backendLock: "off"` |
-| `Gateway` (class `istio-waypoint`) | the route's | `api-gateway-waypoint` | one per namespace with a locked API: the waypoint that enforces the lock, autoscaled with platform values; the namespace selects a waypoint with the label `istio.io/use-waypoint`, set through the `Tenant` (ADR-0007) |
-| `PodMonitor` | the route's | `api-gateway-waypoint` | the waypoint's metrics, as for the gateway (M23); only when `monitoring.podMonitor.enabled` |
+| `AuthorizationPolicy` `DENY` | the route's | `api.orders.<service>` | one per backend Service, enforced by the namespace's waypoint: `DENY` every path but the platform's open paths, from every identity but `mto-api-gateway-istio` (ADR-0007); not rendered when the team set `backendLock: "off"` |
+| `Gateway` (class `istio-waypoint`) | the route's | `mto-api-gateway-waypoint` | one per namespace with a locked API: the waypoint that enforces the lock, autoscaled with platform values; the namespace selects a waypoint with the label `istio.io/use-waypoint`, set through the `Tenant` (ADR-0007) |
+| `PodMonitor` | the route's | `mto-api-gateway-waypoint` | the waypoint's metrics, as for the gateway (M23); only when `monitoring.podMonitor.enabled` |
 | `PeerAuthentication` | the route's | `api.orders.<service>` | only for a tenant in `backendLock.strictMtlsTenants`, and only with the lock on: mode `STRICT` on the pods the Service selects, so a caller outside the mesh is refused on every path (ADR-0007, M24) |
 
 The allowed-API rule is rendered **only when every backend can be locked, or
 its team turned the lock off** and
 **its path overlaps no other route's path on the same host** (ADR-0005).
 Otherwise the route serves nothing,
-and `api-gateway-apis` says why (§7). The extension fails closed.
+and `mto-api-gateway-apis` says why (§7). The extension fails closed.
 
 ```yaml
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata: { name: api.orders, namespace: team-a-dev }
 spec:
-  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: api-gateway }]
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
   action: ALLOW
   rules:
     - from:
@@ -451,14 +452,14 @@ spec:
   rules:
     - from:
         - source:
-            notPrincipals: [cluster.local/ns/team-a-dev/sa/api-gateway-istio]
+            notPrincipals: [cluster.local/ns/team-a-dev/sa/mto-api-gateway-istio]
       to:
         - operation:
             notPaths: ["/metrics", "/health", "/health/live", "/health/ready", "/healthz"]   # backendLock.publicPaths
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
-metadata: { name: api-gateway-waypoint, namespace: team-a-dev }
+metadata: { name: mto-api-gateway-waypoint, namespace: team-a-dev }
 spec:
   gatewayClassName: istio-waypoint
   listeners: [{ name: mesh, port: 15008, protocol: HBONE }]
@@ -516,7 +517,10 @@ The **render check** (`hack/`, in `make verify`) fails when, for any fixture:
   `entry` for a tenant with shared-host prefixes or internal hosts (AC-R-5);
 - a gateway is not `ClusterIP` or lacks the gateway label (AC-R-7);
 - the bootstrap chart uses `lookup` (H1), or a Template carries a Helm hook
-  annotation (AC-OPS-7).
+  annotation (AC-OPS-7);
+- an object rendered outside `mto-api-gateways` has a name that doesn't start
+  with `mto-api-` or `api.`, or lacks the label
+  `api-gateway.stakater.com/managed: "true"` (ADR-0001, AC-LIFE-7).
 
 Every guard in the check has a mutation test, as in the Enterprise harness.
 
@@ -526,7 +530,7 @@ Every guard in the check has a mutation test, as in the Enterprise harness.
 |---|---|
 | Format | `<prefix>.<tenant>.<api>`, optionally followed by `.<anything>`; prefix `api` by default |
 | Tenant | the `Tenant` name, a DNS label (no dot) |
-| API | the `api` instance's name, a DNS label (no dot), unique in the tenant (ADR-0005) |
+| API | the `api` instance's name, a DNS label (no dot) of at most 46 characters, unique in the tenant (ADR-0005) |
 | Closed | `api.team-a.orders` never matches `api.team-a.orders2`; `api.team.a-orders` never matches `api.team-a.orders` |
 | Claim | `allowed_apis` by default; a list claim in the token. The platform may rename it |
 | Istio | the condition values `api.team-a.orders` (exact) and `api.team-a.orders.*` (prefix ending in the dot); a list claim matches when any value matches (M10) |
@@ -539,27 +543,36 @@ G.19 tests a missing claim and a claim that is a single string (Q4).
 
 | Object | Name | Budget |
 |---|---|---|
-| `Gateway` | `<request>`: the `TemplateInstance` name | a DNS label ≤ 48 (the parent refuses others) |
-| Gateway Deployment, Service, ServiceAccount | `<request>-istio` (M3) | fits |
-| Per-request objects | `<request>-infra`, `<request>-tls`, `<request>-tls-extra-<n>`, `<request>-shared-<n>`, `<request>-internal-<n>`, `<request>-status`; the `PodMonitor` `<request>` | request ≤ 48, so the longest stays ≤ 63 |
-| Per-tenant objects (child) | `<request>-jwt`, `<request>-strip-headers`, `<request>-ratelimit`, `<request>-correlation-id`, `<request>-telemetry`, `<request>-apis` | ≤ 63 |
+| `Gateway` | `mto-api-gateway`, always: a reserved name, never the request's (ADR-0002) | fixed |
+| Gateway Deployment, Service, ServiceAccount | `mto-api-gateway-istio` (M3) | fixed |
+| Per-gateway objects | `mto-api-gateway-infra`, `-tls`, `-tls-extra-<n>`, `-shared-<n>`, `-internal-<n>`; the `PodMonitor` `mto-api-gateway` | ≤ 63 |
+| The request's status | `mto-api-gateway-status.<request>`, in the request's namespace | the request's name is a DNS label |
+| Per-tenant objects (child) | `mto-api-gateway-jwt`, `-strip-headers`, `-ratelimit`, `-correlation-id`, `-telemetry`, `-apis` | fixed |
 | The child `TemplateInstance` | `api-gateway-policy-<tenant>`, in `mto-api-gateways` | tenant ≤ 63; the parent shortens with a hash when needed |
 | The child Template | `api-gateway-policy-<generation>` (`api-gateway-policy-g1`), at most two in a release; the team-facing `api-gateway` and `api` keep their names (ADR-0015) | fixed |
-| Per-API objects | `HTTPRoute` and ConfigMap `api.<api>` (the API's namespace, from the `api` instance); `api.<api>` (gateway's namespace), `api.<api>.<service>` (route's namespace: the lock's `AuthorizationPolicy`, and the `PeerAuthentication` when STRICT): dot-joined, so they never meet a request's hyphen-joined names | API name + Service name ≤ 240 |
-| Per backend namespace | the waypoint `Gateway` and its `PodMonitor`, both `api-gateway-waypoint` | fixed |
+| Per-API objects | `HTTPRoute` and ConfigMap `api.<api>` (the API's namespace, from the `api` instance); `api.<api>` (gateway's namespace), `api.<api>.<service>` (route's namespace: the lock's `AuthorizationPolicy`, and the `PeerAuthentication` when STRICT): dot-joined, so they never meet a hyphen-joined name; the `ExternalName` Service `mto-api-<api>-external` (a Service name can't have a dot) | API name ≤ 46, so `mto-api-<api>-external` fits 63; API name + Service name ≤ 240 |
+| Per backend namespace | the waypoint `Gateway` and its `PodMonitor`, both `mto-api-gateway-waypoint` | fixed |
 | Rate limit configuration | `ratelimit-config-<hash>`, the first 10 characters of the content's SHA-256 | fixed length |
 | Root-namespace objects | `mto-api-gateway-token-floor`, `mto-api-gateway-default-deny` | fixed |
 | Hostname | `*.<tenant>.<base domain>`; an API's host under it or a granted host; APIs share a host by path (ADR-0005) | DNS limits: label ≤ 63, name ≤ 253 |
 
+**Reserved names (ADR-0001).** Every object the extension renders outside its
+own namespace `mto-api-gateways` has a name that starts with `mto-api-` or
+`api.`, and carries the label `api-gateway.stakater.com/managed: "true"`.
+Today's charts use neither form, and tenants can't create objects of these
+kinds (ADR-0008). So a rendered name never matches a live object, and if one
+does, the admission policy `mto-api-gateway-no-adoption` refuses the takeover
+and the preflight names the object (§9).
+
 The parent skips a tenant whose name is not a DNS label or is longer than 63
 characters (a label value), and refuses a request whose name is not a DNS
-label of at most 48 characters. Both are listed, with the reason, in the
+label. Both are listed, with the reason, in the
 skipped-tenants ConfigMap (`mto-extension-api-gateway-skipped-tenants`), keys
 `<tenant>` and `request.<namespace>.<name>`.
 
 ## 7. Status, skips and conflicts
 
-Every request renders its own status ConfigMap, `<request>-status`, in its
+Every request renders its own status ConfigMap, `mto-api-gateway-status.<request>`, in its
 namespace: `status: ok` with the tenant and the host names, or
 `status: refused` with the reason (not a tenant namespace, an invalid name,
 or "tenant team-a already has its API gateway, from TemplateInstance
@@ -569,7 +582,7 @@ Every `api` instance renders `api.<api>` in its namespace: `status: ok` with
 the URL and the rule, or `status: refused` with the reason (an invalid
 parameter, or no gateway in the tenant yet).
 
-The tenant's child renders `<request>-apis` in the gateway's namespace:
+The tenant's child renders `mto-api-gateway-apis` in the gateway's namespace:
 
 | Key | Lists |
 |---|---|
@@ -645,8 +658,12 @@ metadata:
        accepted; Service Mesh, the Gateway API and Template Operator are at
        or above their floors in [`support-matrix.md`](support-matrix.md);
        istiod reloads keys every 3 minutes (M19); the Redis password Secret
-       exists. A failed check fails the `Job`, which stops the install or the
-       sync; its log names each missing piece. `preflight.enabled` (default
+       exists; no object with a reserved name (`mto-api-…` or `api.…`, of a
+       kind the extension renders) exists without the label
+       `api-gateway.stakater.com/managed`. A failed check fails the `Job`,
+       which stops the install or the sync; its log names each missing
+       piece, and each object with a reserved name that the extension
+       didn't render. `preflight.enabled` (default
        on) and `preflight.image` are platform values.
 
   The hook belongs to the bootstrap chart only. A Template never carries a

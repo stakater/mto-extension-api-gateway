@@ -1,7 +1,7 @@
 # ADR-0002: One gateway per tenant, requested by the team, in the team's namespace
 
 - **Status:** Proposed
-- **Date:** 2026-11-16
+- **Date:** 2026-11-16 (the gateway's fixed name decided on 2026-11-26)
 
 ## Context
 
@@ -37,9 +37,11 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
 - **One gateway per tenant.** The oldest valid request in a tenant's
   namespaces owns it; every other request renders only a status ConfigMap that
   names the owner.
-- **The gateway runs in the request's namespace**, named after the request:
-  `Gateway` `<request>`, its pods `<request>-istio`. Its pods count against
-  the tenant's quota.
+- **The gateway runs in the request's namespace, always named
+  `mto-api-gateway`**: its pods `mto-api-gateway-istio`. The request's own
+  name is free. A fixed, reserved name never matches a gateway that runs
+  today, so Template Operator never takes one over (ADR-0001). Its pods count
+  against the tenant's quota.
 - **The tenant is never the team's input.** The bootstrap chart's parent
   publishes `api-gateway` with `tenantOf` (namespace → tenant, from the tenant
   label) and `owner` (tenant → request) as `disableOverride` defaults, and
@@ -98,6 +100,10 @@ The Service Mesh extension (in design) refuses tenant-created `Gateway`s.
 - **A `TemplateInstance` with parameters (hosts, replicas, security
   switches).** Rejected: a parameter can be set wrongly or read from a source
   the team shouldn't reach; with none, nothing in the request can be wrong.
+- **The gateway named after the request (the first version).** Rejected on
+  2026-11-26: a team that named its request after today's gateway, in the same
+  namespace, would make Template Operator take over a production gateway
+  (issue #11). One tenant has one gateway, so a fixed name loses nothing.
 - **One gateway per namespace or per API.** Rejected as the default: more pods
   for the same separation the tenant boundary gives. More than one gateway
   per tenant stays a later option, only if a need arises (G.12).

@@ -66,7 +66,7 @@ Fixture:
 **AC-ISO-1 — A route can't attach to another tenant's gateway.** *(R+L)* An
 `HTTPRoute` in `team-b-dev`, written by an admin (tenants can't write routes,
 AC-ISO-6), with a `parentRef` to `team-a`'s gateway
-(`api-gateway` in `team-a-dev`) is not accepted (route status
+(`mto-api-gateway` in `team-a-dev`) is not accepted (route status
 `Accepted=False`); a request for its host through `team-a`'s gateway gets no
 route. `billing`, attached to `team-b`, is accepted.
 
@@ -101,7 +101,7 @@ Q21).
 `EnvoyFilter`, `WasmPlugin` or `TrafficExtension` in `team-a-dev`; creating a
 `RequestAuthentication`, `AuthorizationPolicy` or `Telemetry` that targets
 `team-a`'s `Gateway` or selects its pods; creating a pod that uses the service
-account `api-gateway-istio`; `exec`, `attach` or `port-forward` into a gateway
+account `mto-api-gateway-istio`; `exec`, `attach` or `port-forward` into a gateway
 pod; labelling a pod `istio.io/dataplane-mode=none`; creating an OpenShift
 `Route` for a host under `apis.example.com` (OpenShift); creating an
 `HTTPRoute` in a tenant namespace; creating an `api` or `api-gateway` instance
@@ -141,7 +141,7 @@ prefixes has the `entry` listener.
 
 **AC-ISO-11 — A team turns its backend lock off, unless the platform locks
 it.** *(R+L)* With `backendLock: "off"` on `stray`, no lock and no waypoint are
-rendered for it, the API serves, and `api-gateway-apis` lists it under
+rendered for it, the API serves, and `mto-api-gateway-apis` lists it under
 `unlocked`. With `team-a` in `backendLock.lockedTenants`, the same parameter
 is refused with the reason in `api.stray`, the lock stays on, and the API
 still serves nothing.
@@ -205,7 +205,7 @@ reports the same values.
 
 **AC-AUTH-5 — A route without the annotation serves nothing.** *(L)* Every
 fixture caller is refused on `plain` (`403`); `plain` is listed as "not an
-API" in `team-a`'s `api-gateway-apis` ConfigMap.
+API" in `team-a`'s `mto-api-gateway-apis` ConfigMap.
 
 **AC-AUTH-6 — An extra policy can't let in a request without a valid token.**
 *(L)* As a cluster admin (past admission), add to `team-a-dev`, one at a time:
@@ -324,7 +324,7 @@ header with an id; `shop` sending `x-client: admin` still reports `shop-app`;
 samples `telemetry.tracing.samplingPercentage` of its requests (render).
 
 **AC-KNOB-2 — Invalid and unknown settings are refused and listed.** *(R+L)*
-`team-b`'s `api-gateway-apis` ConfigMap lists `claim-headers` as refused
+`team-b`'s `mto-api-gateway-apis` ConfigMap lists `claim-headers` as refused
 (`authorization` is reserved) and `replicas` as an unknown key, each with the
 reason; `team-b`'s gateway serves `billing` with the defaults.
 
@@ -386,8 +386,8 @@ the `azp` condition fails.
 **AC-LIFE-1 — A team's request gets the tenant's gateway.** *(R+L)* A new
 tenant `team-c` has no gateway until its team creates a `TemplateInstance` of
 `api-gateway`, with no parameters, in `team-c-dev`. Then `team-c-dev` has a
-`Gateway` named like the request with `Programmed=True`, its autoscaler,
-`<request>-status` saying `ok`, and the tenant's child renders the gateway's
+`Gateway` `mto-api-gateway` with `Programmed=True`, its autoscaler,
+`mto-api-gateway-status.<request>` saying `ok`, and the tenant's child renders the gateway's
 policies, with no other step.
 
 **AC-LIFE-2 — A deleted API takes its route and policies.** *(L)* Deleting
@@ -412,6 +412,17 @@ renders no `Gateway`; its `extra-status` says `refused` and names
 deleting `team-a`'s `Gateway`, its settings ConfigMap or one of its policies is
 refused at admission (sync mode `strict`). Deleting the request `api-gateway`
 removes the gateway and everything it rendered.
+
+**AC-LIFE-7 — A live object is never taken over.** *(R+L)* Before `team-c`
+asks for its gateway, an admin creates a `Gateway` `mto-api-gateway` and a
+ConfigMap `mto-api-gateway-infra` by hand in `team-c-dev`. The request
+applies nothing, its `TemplateInstance` status names the refused object, both
+hand-made objects stay unchanged, and deleting the request leaves them. The
+next sync of the bootstrap chart fails its preflight and names them. In
+`team-a-dev`, a request named `orders-gateway`, like a live gateway there,
+gets `mto-api-gateway`, and the live gateway stays unchanged. Render: every
+object outside `mto-api-gateways` has a reserved name and the label; a
+mutation that renders the name `orders-gateway` fails the check.
 
 ## Operations
 

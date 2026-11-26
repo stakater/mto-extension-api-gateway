@@ -74,8 +74,8 @@ story-citation checks. Regenerate the golden only after an intended change:
    role name; the rule then also takes `<old>-<tier>` as exact values. The
    tier is the caller's role for the API, matched by exact text (ADR-0003),
    never by a pattern and never with Lua.
-1. **A team's request decides only where its gateway runs and what it is
-   called** (ADR-0002). The `api-gateway` Template has no parameter a team
+1. **A team's request decides only where its gateway runs** (ADR-0002); the
+   gateway is always `mto-api-gateway`. The `api-gateway` Template has no parameter a team
    can set (all `disableOverride`); the tenant comes from the parent's
    `tenantOf`, keyed by the request's namespace, never from the request's
    labels; one request per tenant owns the gateway; the Template syncs
@@ -104,6 +104,12 @@ story-citation checks. Regenerate the golden only after an intended change:
    tenant. **A published template generation never changes**: every Template
    change goes into the next generation, a release holds at most two, and
    object names stay the same across generations (ADR-0015).
+1. **The extension never takes over a live object** (ADR-0001, issue #11):
+   every object rendered outside `mto-api-gateways` has a name that starts
+   with `mto-api-` or `api.` and the label `api-gateway.stakater.com/managed`;
+   the admission policy `mto-api-gateway-no-adoption` refuses an update that
+   adds the label; the preflight names a reserved name taken by another
+   owner.
 1. **The bootstrap chart renders the same under Helm and Argo CD** (design
    §9): no `lookup`; required APIs checked with `.Capabilities`; live checks
    only in the preflight hook `Job`, never in a Template. A rate limit

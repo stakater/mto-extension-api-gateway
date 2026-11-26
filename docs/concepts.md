@@ -11,7 +11,7 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 |---|---|---|
 | **Tenant** | Multi-Tenant Operator | The unit of ownership: a team and its namespaces. Every tenant namespace carries the label `stakater.com/tenant=<tenant>`. |
 | **Gateway request** | a `TemplateInstance` of the `api-gateway` Template, in a tenant namespace | How a team asks for its tenant's gateway: `api-gateway` in `team-a-dev`. It has no parameters. A tenant has one gateway: the oldest request wins, and every other request gets a status that says why. |
-| **Tenant gateway** | Gateway API `Gateway`, in the request's namespace | The tenant's one Envoy gateway, named like its request: `api-gateway` in `team-a-dev`. Service Mesh deploys its pods there (`api-gateway-istio`). Only routes from the tenant's own namespaces attach to it. The team can't edit or delete it. |
+| **Tenant gateway** | Gateway API `Gateway`, in the request's namespace | The tenant's one Envoy gateway, always named `mto-api-gateway`, in the request's namespace (`team-a-dev`). Service Mesh deploys its pods there (`mto-api-gateway-istio`). Only routes from the tenant's own namespaces attach to it. The team can't edit or delete it. |
 | **Platform namespace** | Kubernetes | `mto-api-gateways`: the bootstrap chart, its parent, and the `api-gateway` and `api` Templates that teams instantiate. Tenants have no access to it. |
 | **Tenant hostnames** | the tenant gateway's listener | The host names the tenant gateway serves: `*.team-a.apis.example.com` by default, plus any extra names the platform grants, plus path prefixes the platform grants on a shared host such as `front.example.com` (ADR-0009). An API can use no other host or prefix. |
 | **API** | a `TemplateInstance` of the `api` Template, in the backend's namespace | One published API: its host, path, optional rewrite or exact operations, and backend `Service` and port, or a host outside the cluster (ADR-0014). Created by the API team. It renders the API's `HTTPRoute` to the tenant gateway; the team never writes a route (ADR-0005). |
@@ -56,9 +56,9 @@ Three words that are easy to confuse:
         namespace: mto-api-gateways
     ```
 
-   Template Operator renders, in `team-a-dev`: Gateway `api-gateway` with the
+   Template Operator renders, in `team-a-dev`: Gateway `mto-api-gateway` with the
    listener `*.team-a.apis.example.com` and the status ConfigMap
-   `api-gateway-status`; the tenant's policy child renders the token check and
+   `mto-api-gateway-status.api-gateway`; the tenant's policy child renders the token check and
    the platform's filters. Service Mesh deploys the
    gateway pods with an autoscaler.
 1. The API team creates one `TemplateInstance` of `api` in `team-a-dev`, the

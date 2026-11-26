@@ -33,7 +33,7 @@ same way.
   `RequestAuthentication`, the three `EnvoyFilter`s, `Telemetry`, one `ALLOW`
   per API (in the gateway's namespace), one backend lock per backend and one
   waypoint per backend namespace (in the route's namespace, ADR-0007), and the
-  tenant's status ConfigMap `<request>-apis` in
+  tenant's status ConfigMap `mto-api-gateway-apis` in
   the gateway's namespace (APIs, routes that are not APIs, duplicates, path
   conflicts, unlocked and external APIs, refused knobs).
 - **The team's request keeps** the `Gateway`, its scaling ConfigMap, its

@@ -46,7 +46,7 @@ must move with nothing broken (docs/migration.md).
 
 - **What is rendered,** as in today's chart:
     1. by the `api` instance, in its own namespace: the `ExternalName` Service
-       `api-<api>-external`, and the route to it, which rewrites the `Host`
+       `mto-api-<api>-external`, and the route to it, which rewrites the `Host`
        header to `externalHost`;
     1. by the tenant's child, in the gateway's namespace, where the gateway
        calls from: the `ServiceEntry` and the `DestinationRule`

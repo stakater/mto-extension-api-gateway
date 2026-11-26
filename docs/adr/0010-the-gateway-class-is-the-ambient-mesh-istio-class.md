@@ -28,7 +28,7 @@ mesh trusts (M4, M9).
 ## Consequences
 
 - The gateway has an identity in the mesh's trust domain,
-  `cluster.local/ns/<namespace>/sa/<request>-istio`, so the backend lock can
+  `cluster.local/ns/<namespace>/sa/mto-api-gateway-istio`, so the backend lock can
   name it.
 - The platform runs the Service Mesh control plane in a way that provides the
   `istio` class. The cluster's own ingress gateway class stays separate.

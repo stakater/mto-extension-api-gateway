@@ -97,8 +97,8 @@ spec:
   templateRef: { name: api-gateway, namespace: mto-api-gateways }
 ```
 
-1. **Check its status:** `api-gateway-status` says `ok`, and the settings are
-   listed as accepted in `api-gateway-apis`.
+1. **Check its status:** `mto-api-gateway-status.api-gateway` says `ok`, and the settings are
+   listed as accepted in `mto-api-gateway-apis`.
 
 ## 3. For each API
 
@@ -142,7 +142,7 @@ spec:
 create one `api` instance per path, with two names, and map both to the same
 old role name in `migration.legacyRoles`.
 
-Check `api.orders` says `ok`, and `api-gateway-apis` lists the API with no
+Check `api.orders` says `ok`, and `mto-api-gateway-apis` lists the API with no
 conflict.
 
 ### 3.b Check the caller-facing details
@@ -211,7 +211,7 @@ takes the traffic again at once (AC-MIG-1).
 After the agreed period:
 
 1. Move the namespace's `istio.io/use-waypoint` label to
-   `api-gateway-waypoint` (through the `Tenant`), and check the lock still
+   `mto-api-gateway-waypoint` (through the `Tenant`), and check the lock still
    refuses `intruder`.
 1. Uninstall the per-API gateway release: its Lua filter, its policies, its
    waypoint, its pods and its `Route`s. The label must move first, or the

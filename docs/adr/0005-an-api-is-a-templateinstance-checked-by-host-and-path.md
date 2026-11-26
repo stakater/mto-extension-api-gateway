@@ -40,8 +40,10 @@ the operator's own account, from any namespace (T9).
   only from tenant namespaces, with the same platform parameters (the
   tenant of each namespace, the tenant's gateway, its hostnames), all
   `disableOverride`. The team creates one instance per API, in the backend's
-  namespace. The instance's name is the API name: a DNS label, unique in the
-  tenant; when two instances of a tenant use one name, the oldest keeps it.
+  namespace. The instance's name is the API name: a DNS label of at most 46
+  characters (so the `ExternalName` Service `mto-api-<api>-external` fits,
+  ADR-0014), unique in the tenant; when two instances of a tenant use one
+  name, the oldest keeps it.
 
 ```yaml
 apiVersion: templates.v2.stakater.com/v2alpha1

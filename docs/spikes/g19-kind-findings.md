@@ -47,6 +47,12 @@ Same lab, for the parts of the design that copy today's charts.
 | M24 | Kubelet probes on a backend with STRICT mTLS | With readiness and liveness probes on the API's port, the pod became ready and did not restart. A pod outside the mesh still got a connection reset on `/metrics` and on an API path; the gateway still got `200`. |
 | S1 | A change of the rate limit `ConfigMap` while the service runs (the image digest today's chart pins, `RUNTIME_WATCH_ROOT=false`) | Three changes of one limit. Twice the service **crashed** when the file changed (`fatal error: concurrent map iteration and map write`, then `fatal error: unexpected signal during runtime execution`), restarted, and read the new limit on start, after about 60 s. Once it reloaded the file with no restart. **Design change: a limit change creates a new `ConfigMap` and rolls the pods; no running pod sees its file change** (design §3.1). |
 
+## Third run (2026-11-26): no takeover at admission
+
+| Row | What was checked | Result |
+|---|---|---|
+| T10 | A `ValidatingAdmissionPolicy` that refuses an `UPDATE` adding the label `api-gateway.stakater.com/managed` to an object without it; a ConfigMap created by hand by another field manager; then a forced server-side apply with Template Operator's field manager, the label and the same name | Refused as a dry run and for real, with the policy's message naming the object; the live object kept its data and had no new label. A new name was created, and an update of an object that already had the label was allowed. An object without the extension's label (another extension's) was still taken over: the policy doesn't affect other extensions. Template Operator itself was not in the lab; G.19 repeats this with it. |
+
 ## Still to check
 
 - The same on Istio 1.27 (Service Mesh 3.3's Istio).

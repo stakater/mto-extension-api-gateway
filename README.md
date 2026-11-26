@@ -24,7 +24,7 @@ can stop that.
 
 | On the platform | At the gateway |
 |---|---|
-| `TemplateInstance` `api-gateway` (no parameters) in `team-a-dev` | `Gateway` `api-gateway` in `team-a-dev`, serving `*.team-a.apis.example.com`, autoscaled; one per tenant |
+| `TemplateInstance` `api-gateway` (no parameters) in `team-a-dev` | `Gateway` `mto-api-gateway` in `team-a-dev`, serving `*.team-a.apis.example.com`, autoscaled; one per tenant |
 | Every request | a valid token from one of the API's issuers; caller headers replaced from the token; the caller's rate limit tier |
 | `TemplateInstance` of `api` named `orders` in `team-a-dev`: host, path, backend `Service` and port | an `HTTPRoute` to the tenant gateway; only callers whose token names `api.team-a.orders` reach that host and path |
 | Backend Service `orders` | accepts calls from `team-a`'s gateway only (except health and metrics paths); on by default, the team can turn it off |

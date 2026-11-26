@@ -170,3 +170,4 @@ part of the extension: it stays with the platform, unchanged.
 | Each team keeps its own copy of the chart, and versions drift | one platform chart, one upgrade (ADR-0015) | ➕ |
 | Names must agree across realm, gateway and limiter | the same roles; tier names are platform values | ✅ |
 | Unsafe combinations fail at render | the templates check every value; refusals in the status | ✅ |
+| Helm refuses to take over an object that another release or a person created | reserved names, an admission policy that refuses a takeover, and a preflight check (ADR-0001) | ✅ |
