@@ -1,0 +1,213 @@
+# Parameters
+
+Every setting of today's per-API gateway chart (the pattern in
+[vision.md](vision.md)), and where it goes in this extension. A setting goes
+to one of four places:
+
+| Place | Who sets it | How |
+|---|---|---|
+| **Platform value** | the platform team | a value of the bootstrap chart, once per cluster; some are per tenant |
+| **Team input** | the API team | the parameters of an `api` `TemplateInstance` (§3, ADR-0005). The gateway request (`TemplateInstance` of `api-gateway`) has **no parameters**: the team chooses its namespace and name, and may set a few validated annotations (§3, ADR-0012) |
+| **Derived** | nobody | the chart computes it from the tenant, the request and the route |
+| **Fixed** | nobody | always on, in the chart; no value turns it off (vision principle 2) |
+
+Names of planned values are proposals. Each story fixes the names it builds.
+
+## 1. Today's settings, one by one
+
+### What the team sets today, per API
+
+| Today | In this extension | Place | Story |
+|---|---|---|---|
+| `gateway.name` | none: the gateway is always `mto-api-gateway`, a reserved name (ADR-0002); the request's name only names its status ConfigMap | fixed | G.29 |
+| `gateway.namespace` | the request's namespace | team input | G.1 ✅ |
+| `hosts.external` | the `api` instance's `host`. It is accepted only under `*.<tenant>.<base domain>`, a host name the platform granted to the tenant, or a shared host with a granted prefix (ADR-0009) | team input, bounded by platform values | G.1 ✅, G.26 |
+| `gateway.pathPrefix` (the published path) | the `api` instance's `path` | team input | G.26 |
+| `backend.internal.service`, `backend.internal.port` | the `api` instance's `service`, `port` | team input | G.26 |
+| `backend.internal.pathPrefix` (the backend's path) | the `api` instance's `rewrite`; the rendered route uses `ReplacePrefixMatch` | team input | G.26 |
+| `backend.internal.namespace` | none. The backend is in the `api` instance's namespace, so no `ReferenceGrant` is needed | — | G.26 |
+| `backend.external.host`, `.port`, `.pathPrefix` | the `api` instance's `externalHost`, `port`, `rewrite`; the `ExternalName` Service and the `Host` rewrite are rendered (ADR-0014) | team input | G.16 |
+| `backend.external.tls.mode`, `.sni`, `.credentialName` | the `api` instance's `tls`, `tlsSni`, `tlsSecret` (a Secret in the gateway's namespace); the `ServiceEntry` and `DestinationRule` are rendered (ADR-0014) | team input | G.16 |
+| `auth.jwt.allowedApis` (free text) | the rule `api.<tenant>.<api>`, closed; the team gives only the API name, as the name of its `api` instance (ADR-0005) | derived | G.24 |
+| `hosts.internalDomain` (a second, internal host per API) | `gateway.internalDomain` and the internal hosts granted per tenant (`gateway.internalHosts`); the `api` instance's `internalHost` picks one; one reencrypt `Route` per host (ADR-0009) | platform value, chosen by the team | G.18 |
+
+### Security switches today: removed, or per API within platform bounds
+
+| Today | In this extension | Place | Story |
+|---|---|---|---|
+| `auth.enabled` | the token floor, the default deny and the allowed-API rules are always rendered (ADR-0004) | fixed | G.2 |
+| `rateLimit.enabled` | the platform-owned rate limit filter is always rendered (ADR-0003); an API's limit is the `api` instance's `rateLimit` parameter (ADR-0004) | team, within platform bounds | G.5 |
+| `security.allowGatewayAccessOnly`, `security.allowDirectBackendAccess` | the `api` instance's `backendLock: "on"` (default) or `"off"`; the platform can lock a tenant (ADR-0007) | team, within platform bounds | G.4 |
+| `security.waypoint.create`, `security.waypoint.name`, `.autoscaling` | the child renders one waypoint `mto-api-gateway-waypoint` per namespace with a locked API, autoscaled with platform values (ADR-0007) | platform value | G.4 |
+| `security.publicPaths` | `backendLock.publicPaths`, a platform list of exact paths | platform value | G.4 |
+| `security.backendPodLabels` (STRICT mTLS on the backend pods; no file sets it) | `backendLock.strictMtlsTenants`: STRICT on the pods each locked Service selects, per tenant (ADR-0007) | platform value | G.4 |
+
+### Security values the team sets today: now the platform's
+
+| Today | In this extension | Place | Story |
+|---|---|---|---|
+| `auth.jwt.realm` | `auth.issuers`, with `auth.defaultIssuers` and `auth.tenantIssuers`: one issuer, several, one per tenant, or one per API (ADR-0004) | platform value | G.2, G.13 |
+| `auth.jwt.audiences` | `auth.issuers.<name>.audiences`, per issuer | platform value | G.2 |
+| `auth.jwt.forwardClaims` (`azp` → `x-sub`, `allowed_apis` → `x-roles`) | `auth.headers`; the gateway replaces any value the caller sent | platform value | G.2 |
+
+### What the chart or the platform sets today
+
+| Today | In this extension | Place | Story |
+|---|---|---|---|
+| gateway replicas, fixed at 3 | `gateway.autoscaling` (minimum, maximum, CPU target) and `gateway.podDisruptionBudget` | platform value | G.1 ✅ |
+| gateway class `istio` | `gateway.className`, only `istio` | platform value | G.1 ✅ |
+| TLS terminate, the certificate | `gateway.tls.certManager.issuerRef`, or a Secret the platform provides | platform value | G.1 ✅ |
+| rate limit tiers, in the platform's rate limit chart | `rateLimit.tiers`; the caller's tier from its role for the API (ADR-0003) | platform value | G.5 |
+| rate limit service and its store | a rate limit service that speaks Envoy's rate limit API, with Redis | platform | G.5 |
+| the rate limit service's image, replicas, autoscaler, disruption budget, spread, resources, probes, local cache, Redis type | `rateLimit.service.*` and `rateLimit.redis.*`, today's values as defaults; a limit change rolls the pods (design §3.1) | platform value | G.5 |
+| `EnvoyFilter` that strips caller headers | a platform-owned header filter, rendered with every tenant gateway (ADR-0003) | fixed | G.2 |
+| `EnvoyFilter` for the rate limit (with Lua) | a platform-owned rate limit filter with no Lua; the tier from the caller's role for the API by a CEL expression (exact text), the caller from `azp` (ADR-0003, M20) | fixed | G.5 |
+| `EnvoyFilter` for a correlation ID (some APIs) | the `correlation-id` knob, platform-owned filter 3; the header name is `correlationId.header` (ADR-0003, ADR-0012) | team annotation | G.25 |
+| `Telemetry`: log format, tracing | the `access-log` and `trace-headers` knobs, from the platform's list (ADR-0012); platform-wide observability stays G.14 | team annotation, within the platform's list | G.25 |
+| trace sampling 100 % in each gateway's `Telemetry` (fixed in the chart) | `telemetry.tracing.samplingPercentage`, default 100 (ADR-0012) | platform value | G.25 |
+| `observability.podMonitor.enabled`, `.interval` | `monitoring.podMonitor.enabled`, `.interval`: a `PodMonitor` per gateway and per waypoint | platform value | G.6 |
+| a log format for one team | the `access-log` knob, from the platform's list (ADR-0012) | team annotation, within the platform's list | G.25 |
+| `RequestAuthentication` (issuer, keys, audience) | the same kind, with the Istio token floor, from platform values | fixed, from platform values | G.2 |
+| `ReferenceGrant` | not rendered | — | — |
+| the chart version, one copy per team | the bootstrap chart's version; one upgrade for all | platform | — |
+
+### Outside the chart today, and still outside
+
+| Today | In this extension | Who | Story |
+|---|---|---|---|
+| mesh labels on the namespaces | stay in the `Tenant`; the extension reports a namespace outside the mesh | platform, in the Multi-Tenant Operator | G.6 |
+| the waypoint label on the backend namespace | stays: `istio.io/use-waypoint`, set through the `Tenant`; the extension reports a namespace without it | platform, in the Multi-Tenant Operator | G.4 |
+| the identity provider's client and roles per API | manual; one role per tier, `api.<tenant>.<api>.<tier>` | platform, in RHBK | G.11 |
+
+## 2. The platform's values (bootstrap chart)
+
+### Built in G.1 (on the code branch, PR #14)
+
+| Value | Default | Meaning |
+|---|---|---|
+| `gateway.baseDomain` | `""`, required | each tenant's listener serves `*.<tenant>.<baseDomain>` |
+| `gateway.className` | `istio` | the only accepted value |
+| `gateway.port` | `443` | listener port |
+| `gateway.extraHostnames` | `{}` | **per tenant**: extra host names, each on its own listener |
+| `gateway.autoscaling.minReplicas`, `.maxReplicas`, `.targetCPUUtilizationPercentage` | `2`, `5`, `80` | the gateway's autoscaler; the minimum is at least 2 |
+| `gateway.podDisruptionBudget.minAvailable` | `1` | below the minimum replicas, so a node drain can evict a pod |
+| `gateway.tls.certManager.issuerRef` | `ClusterIssuer`, no name | with a name, one `Certificate` per listener |
+| `tenants.mode`, `tenants.list` | `all`, `[]` | which tenants may request a gateway |
+| `tenantLabelKey` | `stakater.com/tenant` | the Multi-Tenant Operator's namespace label |
+| `templateOperator.serviceAccountName`, `.namespace` | Template Operator's defaults | who gets the chart's RBAC |
+| `templateSync.mode` | `revert` | the parent's sync mode; the team-facing Template is always `strict` |
+
+### Planned
+
+| Value | Proposed default | Meaning | Story |
+|---|---|---|---|
+| `gateway.sharedHosts` | `[]` | hosts that several tenants share, each with the path prefixes granted **per tenant**; each prefix gets a reencrypt OpenShift `Route` to the tenant's gateway, which gets the `entry` listener (ADR-0009) | G.18 |
+| `auth.issuers.<name>.url` | none, at least one issuer required | a token issuer the platform trusts; the token floor accepts the principals of every issuer | G.2, G.13 |
+| `auth.issuers.<name>.audiences` | none, required | the audiences a token of this issuer must carry | G.2, G.13 |
+| `auth.issuers.<name>.jwksUri` | empty | the key set's URL (`RequestAuthentication` `jwksUri`), when the issuer's host is not reachable from the cluster; the issuer still pins `iss` | G.2, G.13 |
+| `auth.issuers.<name>.tenant` | empty | the tenant that runs this issuer; it may then be used only by that tenant | G.13 |
+| `auth.defaultIssuers` | none, required unless every tenant has a list | the issuers of every tenant without its own list: one or many | G.2, G.13 |
+| `auth.tenantIssuers` | `{}` | **per tenant**: its default issuers, instead of `auth.defaultIssuers`; an API may also name issuers registered with `tenant: <its tenant>` (ADR-0004) | G.13 |
+| `rateLimit.failureModeAllow` | to decide in G.5 | whether calls pass when the rate limit service is down; documented as a limit (ADR-0003) | G.5 |
+| `rateLimit.redis.address`, `rateLimit.redis.passwordSecret` | none, required with the rate limit | the platform's Redis for the counters | G.5 |
+| `rateLimit.unlimitedTenants` | `[]` | tenants the platform exempts from the rate limit; their filter stays (ADR-0004) | G.5 |
+| `rateLimit.unlimitedApis` | `[]` | single APIs the platform exempts, as `<tenant>.<api>`; the tenant's other APIs keep their limits (ADR-0004) | G.5 |
+| `rateLimit.lockedTenants` | `[]` | tenants whose teams may not turn an API's limit off; their `rateLimit: "off"` is refused (ADR-0004) | G.5 |
+| `backendLock.publicPaths` | `/metrics`, `/health`, `/health/live`, `/health/ready`, `/healthz` | paths on a locked backend that anyone may call; exact paths, never a pattern (ADR-0007) | G.4 |
+| `backendLock.waypoint.autoscaling.minReplicas`, `.maxReplicas` | `3`, `5` | each backend namespace's waypoint, as today | G.4 |
+| `backendLock.lockedTenants` | `[]` | tenants whose teams may not turn a backend lock off (ADR-0007) | G.4 |
+| `backendLock.strictMtlsTenants` | `[]` | tenants whose locked backends also get STRICT mTLS: callers outside the mesh refused, scrapers outside the mesh too (ADR-0007) | G.4 |
+| `gateway.internalDomain` | empty | the cluster router's domain for internal hosts | G.18 |
+| `gateway.internalHosts` | `{}` | **per tenant**: internal hosts, one DNS label under `gateway.internalDomain`, each with a reencrypt `Route` to the tenant's gateway (ADR-0009) | G.18 |
+| `rateLimit.service.image` | an image digest the release tested | the rate limit service, pinned by digest | G.5 |
+| `rateLimit.service.autoscaling.minReplicas`, `.maxReplicas`, `.targetCPUUtilizationPercentage` | `3`, `8`, `70` | the service's autoscaler, as today | G.5 |
+| `rateLimit.service.podDisruptionBudget.minAvailable` | `2` | below the minimum replicas, as today | G.5 |
+| `rateLimit.service.resources` | requests 200m CPU, 256Mi; limits 1 CPU, 512Mi | as today | G.5 |
+| `rateLimit.service.localCacheSizeBytes` | `16777216` | callers already over their limit are answered without Redis; `0` turns it off | G.5 |
+| `rateLimit.service.redisHealthCheck` | `true` | the health probes fail without a live Redis connection, so a wrong password shows as a failing pod | G.5 |
+| `rateLimit.redis.type` | `sentinel` | `single` or `sentinel`, as today | G.5 |
+| `rateLimit.redis.sentinel.masterSet` | `mymaster` | the Sentinel master set, as today | G.5 |
+| `telemetry.tracing.samplingPercentage` | `100` | the share of a gateway's requests traced when its `Telemetry` is rendered, as today (ADR-0012) | G.25 |
+| `monitoring.podMonitor.enabled`, `.interval` | `true`, `30s` | a `PodMonitor` per tenant gateway and per waypoint, as today | G.6 |
+| `preflight.enabled`, `preflight.image` | `true`, an image with `oc` | the live preflight `Job` (design §9) | G.6 |
+| `rollout.default` | `g1` | the template generation every tenant and API uses (ADR-0015) | G.28 |
+| `rollout.canary.tenants`, `rollout.canary.apis` | `[]` | tenants, and APIs as `<tenant>.<api>`, on the next generation; the schema allows only the generations the release contains | G.28 |
+| `gateway.meshRevision.default`, `gateway.meshRevision.tenants` | empty (the mesh's default revision) | the Istio revision each tenant's gateway uses, rendered as the label `istio.io/rev`, for a mesh upgrade one tenant at a time (ADR-0015, M22) | G.28 |
+| `istio.rootNamespace` | `istio-system` | where the token floor and default deny live | G.2 |
+| `istio.trustDomain` | `cluster.local` | the trust domain in the gateway's principal for the backend lock | G.4 |
+| `headers.reserved` | the platform's list | header names a team can't map a claim to, always removed from callers | G.2, G.25 |
+| `correlationId.header` | `x-correlation-id` | the header the correlation-ID knob sets | G.25 |
+| `telemetry.accessLogProviders`, `telemetry.tracing.enabled` | `[]`, `false` | the access log providers a team may choose; whether the mesh has tracing, so trace headers and the sampling rate apply | G.25 |
+| `auth.claims.allowedApis` | `allowed_apis` | the list claim with the caller's APIs | G.2, G.3 |
+| `auth.claims.caller` | `azp` | the caller's identity: the `x-sub` header and the rate limit counter | G.2, G.5 |
+| `auth.headers.caller`, `auth.headers.roles` | `x-sub`, `x-roles` | the headers the gateway sets from the token | G.2 |
+| `api.rulePrefix` | `api` | the first segment of `api.<tenant>.<api>` | G.24 |
+| `migration.legacyRoles` | `{}` | **per API**, `<tenant>.<api>: <old role name>`: the API also accepts `<old>-<tier>` roles, so callers' tokens don't change when it moves (ADR-0006) | G.9 |
+| `migration.oldGateways` | `{}` | **per API**, `<tenant>.<api>: <old gateway's service account principal>`: the API's lock also lets the old gateway pass while both run (ADR-0007, docs/migration.md) | G.9 |
+| `rateLimit.tiers` | `gold` 100/s, `silver` 50/s, `bronze` 10/s | the tiers and their rates | G.5 |
+| `rateLimit.defaultTier` | `bronze` | the catch-all for a missing or unknown tier; never "no limit" | G.5 |
+
+No platform value is a switch for the token check or the header replacement.
+The backend lock can be turned off by the team for its API (`backendLock:
+"off"`, unless the tenant is in `backendLock.lockedTenants`, ADR-0007). The
+rate limit can be turned off: by the team for its API
+(the `api` instance's `rateLimit: "off"`, unless the tenant is in
+`rateLimit.lockedTenants`), or by the platform (`rateLimit.unlimitedTenants`,
+`rateLimit.unlimitedApis`). No team annotation names a security setting
+(AC-R-3).
+
+## 3. The team's inputs
+
+| Input | Where | Example |
+|---|---|---|
+| the gateway request | a `TemplateInstance` of `api-gateway`: its namespace and name, no parameters | `api-gateway` in `team-a-dev` |
+| team settings | annotations `api-gateway.stakater.com/*` on the request: `claim-headers`, `correlation-id`, `access-log`, `trace-headers`; validated, refused keys listed (ADR-0012) | `claim-headers: client_id=x-client` |
+| the API | a `TemplateInstance` of `api` in the backend's namespace; its name is the API name, a DNS label unique in the tenant (ADR-0005) | `orders` in `team-a-dev` |
+| host, path, rewrite, backend, operations | the `api` instance's parameters `host` (default `<api>.<tenant>.<base domain>`), `path`, `rewrite`, `internalHost` (ADR-0009), `service` or `externalHost` (with `tls`, `tlsSni`, `tlsSecret`, ADR-0014), `port`, `operations`, `issuers`, `rateLimit`, `backendLock`; checked by the template; APIs share a host by path (ADR-0005) | `orders.team-a.apis.example.com`, `/orders/v2` → `/orders/v1`, Service `orders` port 80 |
+
+The first proposal's six parameters map like this:
+
+| First proposal | This extension (`api` instance, ADR-0005) |
+|---|---|
+| `apiName` | the instance's name |
+| `backendNamespace` | the instance's namespace |
+| `backendService` | `service` and `port` |
+| `backendPath` | `rewrite` |
+| `exposedPath` | `path`, or exact `operations` |
+| `externalHost` | `host` (the first proposal's `externalHost` was the published host, not today's `externalHost` parameter for a backend outside the cluster, ADR-0014) |
+
+Between environments, an `api` instance changes only its namespace and its host name
+(`orders.team-a…`, `orders-test.team-a…`). The gateway request is made once
+per tenant.
+
+## 4. Derived: nobody types these
+
+| What | From |
+|---|---|
+| the tenant | the request's or the route's namespace, through `tenantOf` (the namespace label) |
+| the gateway's name and every gateway-level object name | the request's name |
+| the listener host name `*.<tenant>.<base domain>` | the tenant and `gateway.baseDomain` |
+| the allowed-API rule `api.<tenant>.<api>` | the prefix, the tenant, the `api` instance's name |
+| the backend lock's principal `cluster.local/ns/<namespace>/sa/mto-api-gateway-istio` | the gateway's namespace and name |
+| the backend lock's target | the backend `Service` (the policy's `targetRefs`), enforced by the namespace's waypoint |
+| which request owns the tenant's gateway | the oldest valid request (`owner`) |
+
+## 5. Fixed: never a parameter
+
+The token floor and the issuer pin; the default deny; the closed allowed-API
+rule per API; the header replacement; HTTPS
+with TLS terminated at the gateway; `allowedRoutes` from the tenant's
+namespaces only, `HTTPRoute` only; sync mode `strict` for the team-facing
+Template; no `EnvoyFilter` but the three allowlisted platform filters, and no
+Lua (ADR-0003, ADR-0004).
+
+## 6. Open
+
+- **Per-tenant platform values.** `gateway.extraHostnames`, the prefixes in
+  `gateway.sharedHosts`, `auth.tenantIssuers`, `rateLimit.unlimitedTenants`,
+  `rateLimit.unlimitedApis`, `rateLimit.lockedTenants`,
+  `backendLock.lockedTenants`, `backendLock.strictMtlsTenants`,
+  `gateway.internalHosts`, `rollout.canary.tenants` and
+  `gateway.meshRevision.tenants` are per tenant. A per-tenant autoscaling range
+  or tier set is not designed. Add it when a tenant needs it, as a platform
+  value, never as a team input.
