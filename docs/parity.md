@@ -28,7 +28,7 @@ part of the extension: it stays with the platform, unchanged.
 
 | Feature today | This extension | Status |
 |---|---|---|
-| An internal host per API on the cluster's router domain, with its own OpenShift Route | not designed yet (G.18) | ⏳ |
+| An internal host per API on the cluster's router domain, with its own OpenShift Route | the platform grants internal hosts to the tenant; the `api` instance's `internalHost` picks one; one reencrypt `Route` per host to the `entry` listener (ADR-0009, G.18); a moved API keeps its old name | 🔄 |
 | A shared front-door host, split by path, with one OpenShift Route per gateway | the platform grants each tenant path prefixes; one reencrypt Route per prefix (ADR-0009) | ✅ |
 | The route binds only to its hosts | the `api` instance's `host` | ✅ |
 | Public path prefix | `path` | ✅ |
@@ -84,7 +84,7 @@ part of the extension: it stays with the platform, unchanged.
 | Add the correlation header from `x-request-id` when absent | `correlation-id` knob; the header name is a platform value | ✅ |
 | Per-gateway access log provider | `access-log` knob, from the platform's list | ✅ |
 | Extra trace tags from headers | `trace-headers` knob | ✅ |
-| 100 % trace sampling on each gateway | not designed: the sampling rate must become a platform value | ⏳ |
+| 100 % trace sampling on each gateway | `telemetry.tracing.samplingPercentage`, default 100, in each gateway's `Telemetry` (ADR-0012) | ✅ |
 | Access log formats and the tracing provider in the mesh configuration | unchanged | ➖ |
 
 ## 7. Rate limiting
@@ -98,9 +98,9 @@ part of the extension: it stays with the platform, unchanged.
 | Rate limiter down: requests pass (fail open), 0.25 s timeout | a platform value; fail open observed | ✅ |
 | `429` without `X-RateLimit-*` headers | the same | ✅ |
 | Shared rate limit service (`envoyproxy/ratelimit`), tiers and rates | deployed by the bootstrap chart from platform values | ✅ |
-| Its scaling, disruption budget, spread, resources and Redis health probes | not designed: needs platform values (Q12) | ⏳ |
-| Its pods restart when the limits change | no restart: the service reloads the file (ADR-0015) | ➕ |
-| Redis with Sentinel, persistence, password, access only from the limiter | Redis provided by the platform (address and password secret) | ➖ |
+| Its scaling, disruption budget, spread, resources and Redis health probes | the same defaults, as platform values `rateLimit.service.*` (design §3.1) | ✅ |
+| Its pods restart when the limits change | the same: a limit change creates a new `ConfigMap` and rolls the pods; a changed file crashed the service on kind (S1) | ✅ |
+| Redis with Sentinel, persistence, password, access only from the limiter | Redis provided by the platform: one server or Sentinel (`rateLimit.redis.type`), address and password Secret | ➖ |
 
 ## 8. Backends
 
@@ -118,8 +118,8 @@ part of the extension: it stays with the platform, unchanged.
 | Open paths for probes and scrapers | platform list `backendLock.publicPaths` | ✅ |
 | Lock off, with an explicit acknowledgement | `backendLock: "off"`; the platform can lock a tenant | ✅ |
 | The chart refuses auth without a lock choice | the lock is on unless the team turns it off | ✅ |
-| STRICT mTLS on backend pods (optional, unused) | not designed yet: it closes calls from outside the mesh (observed), and also blocks scrapers outside the mesh | ⏳ |
-| Calls to a pod's IP, and from outside the mesh, bypass the waypoint | the same (observed: M21, Q21) | ✅ |
+| STRICT mTLS on backend pods (optional, unused) | per tenant, by the platform (`backendLock.strictMtlsTenants`), off by default: callers outside the mesh refused, kubelet probes pass, scrapers outside the mesh refused (observed, ADR-0007) | 🔄 |
+| Calls to a pod's IP, and from outside the mesh, bypass the waypoint | the same (observed: M21, Q21); STRICT closes the path from outside the mesh for a tenant | ✅ |
 | Waypoint autoscaling and disruption budget | platform values (ADR-0007) | ✅ |
 | A waypoint shared from another namespace | one waypoint per backend namespace | 🔄 |
 
@@ -128,7 +128,7 @@ part of the extension: it stays with the platform, unchanged.
 | Feature today | This extension | Status |
 |---|---|---|
 | Gateway autoscaler and disruption budget | the same, platform values (ADR-0002) | ✅ |
-| `PodMonitor`s for the gateway and the waypoint (metrics for Kiali and Grafana) | not designed yet | ⏳ |
+| `PodMonitor`s for the gateway and the waypoint (metrics for Kiali and Grafana) | the same, `monitoring.podMonitor.*`, default on, 30 s; the port `metrics`, `/stats/prometheus` (observed, M23) | ✅ |
 
 ## 11. Namespaces and prerequisites
 
@@ -165,7 +165,7 @@ part of the extension: it stays with the platform, unchanged.
 
 | Feature today | This extension | Status |
 |---|---|---|
-| Renders with `helm template` (Argo CD), so no `lookup` | the bootstrap chart's preflight must also work under Argo CD | ⏳ |
+| Renders with `helm template` (Argo CD), so no `lookup` | no `lookup`; the preflight checks values by schema, APIs by `.Capabilities`, and the live state in a hook `Job` that Argo CD runs as `PreSync` (design §9) | ✅ |
 | One release writes into two namespaces | Template Operator renders into the tenant's namespaces | ✅ |
 | Each team keeps its own copy of the chart, and versions drift | one platform chart, one upgrade (ADR-0015) | ➕ |
 | Names must agree across realm, gateway and limiter | the same roles; tier names are platform values | ✅ |

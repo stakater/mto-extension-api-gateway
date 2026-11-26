@@ -58,7 +58,9 @@ string, a path in another case, and a rewrite on the route (M16, Q16); whether
 a render can detect and refuse a name that an existing object
 already holds, and that deleting a request never removes such an object (T4,
 issue #11); that no request passes while the policies are applied in any order
-(issue #10); `gateway-baseline.md` rows updated.
+(issue #10); the metrics port of the gateway and the waypoint (M23); kubelet
+probes under STRICT mTLS (M24); a change of the rate limit configuration (S1);
+`gateway-baseline.md` rows updated.
 
 **Story G.0 — Live spike on OpenShift** 📝 *Draft*
 
@@ -71,7 +73,9 @@ the SNI a reencrypt and a passthrough `Route` send to a gateway with
 hostname-bound listeners (R4); a wildcard passthrough `Route` on a dedicated
 IngressController; one shared host split by path between two tenants'
 gateways with reencrypt `Route`s, `InterNamespaceAllowed`, the `entry`
-listener and the service CA certificate (R1–R3, Q17); the Service Mesh control
+listener and the service CA certificate (R1–R3, Q17); an internal host on the
+cluster router moved from one gateway's `Route` to another's, and how long it
+has no backend (R5); the Service Mesh control
 plane's key reload interval set to 3 minutes, and how long tokens are refused
 after an issuer's keys change (M19); that Service Mesh 3's proxy includes the
 expression rate limit descriptor (M20; if not, ADR-0003's tier claim fallback);
@@ -120,7 +124,9 @@ every gotemplate; Istio CRDs (`security.istio.io`, `networking.istio.io`,
 `telemetry.istio.io`) vendored for `crd-validate`; fixtures for an empty
 LIST and for listed objects without annotations, each failing offline as it
 would live; a check that fails if a Template carries a Helm hook annotation,
-since Template Operator doesn't run hooks (#6); golden unchanged.
+since Template Operator doesn't run hooks (#6), or if the bootstrap chart uses
+`lookup`, which returns nothing under Argo CD (H1); the render tests pass
+`--api-versions`, as Argo CD does (H2); golden unchanged.
 
 **Story G.21 — Gateways are internal and labelled** 📝 *Draft*
 
@@ -221,10 +227,13 @@ every path but `backendLock.publicPaths` from every identity but the tenant
 gateway's (ADR-0007); the team's `backendLock: "off"` and
 `backendLock.lockedTenants`; a backend that can't be locked (no selector,
 `ExternalName`, a namespace outside the mesh or without a waypoint label)
-gets no API rule and is listed; live: `intruder` refused through the Service,
+gets no API rule and is listed; `backendLock.strictMtlsTenants`: a STRICT
+`PeerAuthentication` on the pods of each locked Service of those tenants
+(ADR-0007); live: `intruder` refused through the Service,
 also after an extra `ALLOW`; the open paths, probes and monitoring work; the
-gateway allowed; calls to a pod's IP recorded (Q21). Satisfies **AC-ISO-5**,
-**AC-ISO-7**, **AC-ISO-11**.
+gateway allowed; calls to a pod's IP recorded (Q21); with STRICT, `outsider`
+refused and probes passing. Satisfies **AC-ISO-5**,
+**AC-ISO-7**, **AC-ISO-11**, **AC-ISO-12**.
 
 **Story G.16 — Backends outside the cluster** 📝 *Draft*
 
@@ -262,14 +271,19 @@ As a platform team, I want each authenticated caller limited by its tier on
 every API, so that no caller uses more than its share of a tenant's gateway.
 
 Done: the bootstrap chart deploys the rate limit service with its tier
-configuration from bootstrap values (Redis address and secret as values); the
+configuration from bootstrap values, with today's values as defaults
+(autoscaler, disruption budget, spread, resources, probes, the image by digest;
+Redis as one server or Sentinel, its address and Secret as values); the
+configuration `ConfigMap` named by a hash of its content (S1); the
 child renders the rate limit `EnvoyFilter` (one entry per API, matched on
 its host and path; descriptors `tenant`, `api`, `tier` from the caller's
 role for the API by exact text, the lowest when none (ADR-0003, M20), `azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`
 per tenant and per API, and the failure mode as platform values; live: `429` at the limit, per API and caller, a missing or unknown
 tier at `bronze`, an exempt tenant and an exempt API unlimited; a change of
-the tiers reaches the service without a pod restart. Satisfies **AC-RL-1**,
-**AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**, **AC-RL-7**.
+the tiers rolls the service one pod at a time, under load, with no failed
+request. Satisfies **AC-RL-1**,
+**AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**, **AC-RL-7**,
+**AC-RL-8**.
 
 **Story G.25 — Team settings on the gateway request** 📝 *Draft*
 
@@ -279,7 +293,8 @@ for settings that can't weaken security.
 
 Done: the child reads the owner request's `api-gateway.stakater.com/*`
 annotations (ADR-0012), validates them, renders the claim-header extras, the
-correlation-ID `EnvoyFilter` and the `Telemetry`; refused and unknown keys
+correlation-ID `EnvoyFilter` and the `Telemetry` (with the platform's trace
+sampling rate, default 100 %); refused and unknown keys
 listed with the reason; live: a mapped header set from the token and the
 caller's copy removed, the correlation header added when absent and kept when
 sent. Satisfies **AC-KNOB-1**, **AC-KNOB-2**, **AC-KNOB-3**, **AC-R-3**.
@@ -289,19 +304,25 @@ measures, rendered per tenant gateway: for shared hosts, one reencrypt `Route`
 per granted prefix and the `entry` listener (ADR-0009); for the tenant's own
 and extra hostnames, a passthrough `Route` per host or one wildcard
 passthrough `Route` on a dedicated IngressController, as G.0 shows;
-certificates from the platform's certificate issuer. Satisfies **AC-ISO-2** (live),
-**AC-ISO-10**.
+certificates from the platform's certificate issuer; internal hosts on the
+cluster router, granted per tenant, one reencrypt `Route` each, and the `api`
+instance's `internalHost` (ADR-0009). Satisfies **AC-ISO-2** (live),
+**AC-ISO-10**, **AC-ISO-13**.
 
 ---
 
 ## Phase 2 — Trustworthy
 
-**Story G.6 — Status and preflight** 📝 *Draft* — gateway `Programmed`, and
-refused knobs, in the request's status; namespaces outside the mesh and hosts
-outside the tenant's hostnames in `<request>-apis`; preflight for Service
-Mesh, the Gateway API and Istio CRDs, Template Operator, the issuer and Redis,
-and for the version floors in [`support-matrix.md`](support-matrix.md).
-Satisfies **AC-OPS-2**.
+**Story G.6 — Status, monitoring and preflight** 📝 *Draft* — gateway
+`Programmed`, refused knobs, and a `Route` the router didn't admit, in the
+request's status; namespaces outside the mesh and hosts
+outside the tenant's hostnames in `<request>-apis`; a `PodMonitor` per gateway
+and per waypoint (`monitoring.podMonitor.*`, M23); the preflight in three
+layers (values schema, APIs by `.Capabilities`, a hook `Job` for the live
+state) for Service Mesh, the Gateway API and Istio APIs, Template Operator,
+the issuer and Redis, and the version floors in
+[`support-matrix.md`](support-matrix.md), the same under Helm and Argo CD
+(design §9). Satisfies **AC-OPS-2**, **AC-OPS-7**, **AC-OPS-8**.
 
 **Story G.7 — Lifecycle** 📝 *Draft* — `api` instance deleted, request deleted,
 tenant deleted, a hand edit reverted or refused; nothing left behind, nothing
@@ -311,7 +332,8 @@ else touched. Satisfies **AC-LIFE-2**, **AC-LIFE-3**, **AC-LIFE-4**,
 **Story G.23 — Admission, agreed with the Service Mesh extension** 📝 *Draft* —
 one shared list of refused kinds with the Service Mesh extension; a `parentRef`
 to another tenant's gateway; a tenant's OpenShift `Route` under the base
-domain or for a shared host (ADR-0009). Satisfies **AC-ISO-6** (shared list).
+domain, for a shared host or for a granted internal host (ADR-0009).
+Satisfies **AC-ISO-6** (shared list).
 
 **Story G.9 — Migration from per-API gateways** 📝 *Draft* — the per-API
 gateways serve production, so the runbook in
@@ -319,7 +341,8 @@ gateways serve production, so the runbook in
 time, on the test cluster first, with no change for callers: today's tokens
 work through the platform's old-role mapping (ADR-0006); the headers each
 backend reads compared through both gateways; a values file turned into an
-`api` instance on the same shared host and path; one change that moves the
+`api` instance on the same shared host and path; an internal host granted to
+the tenant and moved with its `Route`; one change that moves the
 path's entry point and one that moves it back; the error rate, latency and
 `401`/`403`/`429` counts compared before and after; the old gateway removed
 after the agreed period. Satisfies **AC-MIG-1**, **AC-MIG-2**, **AC-MIG-3**,

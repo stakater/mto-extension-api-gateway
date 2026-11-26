@@ -50,6 +50,12 @@ pattern validation, and an undeclared parameter fails the instance.
   stay. Every mapped claim is required in the API rule, so the header is
   always written from the token, and the header filter removes the caller's
   copy of every mapped name (ADR-0003).
+- **The trace sampling rate is a platform value, not a knob.** When the
+  platform configures tracing (`telemetry.tracing.enabled`) and a team sets
+  `access-log` or `trace-headers`, the gateway's `Telemetry` samples
+  `telemetry.tracing.samplingPercentage` of its requests (default 100 %, as
+  today's chart does for each gateway with its telemetry on). A gateway
+  without these knobs follows the mesh's own rate.
 - **Security, hostnames, scaling and rate limits are not gateway knobs.** They
   stay platform values (ADR-0004, ADR-0009); a team turns one API's rate limit
   off with that API's `rateLimit` parameter (ADR-0004).

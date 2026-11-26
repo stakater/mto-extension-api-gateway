@@ -77,8 +77,12 @@ rollout:
        tenant's gateway to the new revision first, with the `istio.io/rev`
        label rendered from a platform value (`gateway.meshRevision`), and
        moves it back the same way (M22).
-    1. The rate limit service restarts one pod at a time; if it is ever
-       unavailable, traffic keeps flowing when the platform chose fail open
+    1. The rate limit service restarts one pod at a time (one extra pod
+       first, none unavailable). A change of the limits creates a new
+       `ConfigMap`, whose name carries a hash of its content, and so rolls
+       the pods: no running pod reads a changed file, which crashed the
+       service on kind (S1). If the service is ever unavailable, traffic
+       keeps flowing when the platform chose fail open
        (`rateLimit.failureModeAllow`, decided in G.5).
     1. The design stays closed in any apply order (ADR-0004), so a switch
        never opens a gap.

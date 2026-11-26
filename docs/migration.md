@@ -59,6 +59,12 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
     - `backendLock.publicPaths`: the same open paths as today's
       `security.publicPaths` (default `/metrics`, `/health`, `/health/live`,
       `/health/ready`, `/healthz`).
+    - `gateway.internalDomain` and `gateway.internalHosts`: the router's
+      domain, and for each tenant the internal hosts of its APIs that callers
+      use today (`<gateway>-<namespace>.<router domain>`) (ADR-0009).
+    - `rateLimit.service.*`, `monitoring.podMonitor.*` and
+      `telemetry.tracing.samplingPercentage`: the defaults are today's
+      values; change them only where today's differ.
 1. **Check the mesh and the router** (already so where gateways share a host
    today):
     - Istio's key reload interval is 3 minutes (design §10).
@@ -106,6 +112,7 @@ provider's tokens.
 | Today's per-API values | `api` instance parameter |
 |---|---|
 | `gateway.hosts.external` (the shared host) | `host` |
+| the internal host, when callers use it | `internalHost`: the old name, granted to the tenant |
 | `gateway.pathPrefix` | `path` |
 | `backend.internal.pathPrefix`, when different | `rewrite` |
 | `backend.internal.service`, `.port` | `service`, `port` |
@@ -143,7 +150,7 @@ conflict.
 | Check | How | If found |
 |---|---|---|
 | Tokens sent in the URL (`?access_token=`) | the old gateway's access log | the tenant gateway refuses them (M15): ask those callers to use the `Authorization` header first |
-| Callers on the old internal host (`<gateway>-<namespace>.<router domain>`) | the router's access log | keep the API on its old gateway until G.18 gives the internal host |
+| Callers on the old internal host (`<gateway>-<namespace>.<router domain>`) | the router's access log | grant the old name to the tenant and set `internalHost`; it moves in step 3.f |
 | Headers the backend reads | ask the API team | AC-MIG-3 compares them through both gateways |
 
 ### 3.c Check the tiers
@@ -180,6 +187,13 @@ and the headers at the backend (AC-MIG-2, AC-MIG-3).
 Remove the old gateway's OpenShift `Route` for the API's path (in the old
 release: no external host, or the route turned off). The tenant's `Route` for
 the shorter prefix now takes the path.
+
+An API with an internal host also removes the old gateway's internal `Route`
+(`<gateway>-internal`) in the same change. The tenant's `Route` for that host
+waits behind it, because the router gives a host to the oldest `Route`; the
+router admits it when the old one is gone (R5). To move back, the platform
+removes the grant, and the old release renders its internal `Route` again.
+**G.0 measures how long the host has no backend in that switch.**
 
 Why this is one change: while the old `Route` exists, the router prefers its
 longer path (R1), so the old gateway keeps the traffic. **G.0 confirms that
@@ -220,4 +234,5 @@ After the agreed period:
 | Service Mesh 3's proxy includes the expression rate limit descriptor (M20) | G.0 |
 | The router prefers the longest path on a shared host (R1) | G.0 |
 | A reencrypted connection reaches the `entry` listener (R4, Q17) | G.0 |
+| The router admits the tenant's internal `Route` when the old one is deleted, and how long the host has no backend (R5) | G.0 |
 | The tier expression never fails, with odd tokens | G.19 |

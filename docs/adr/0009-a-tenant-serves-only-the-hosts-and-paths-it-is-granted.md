@@ -2,7 +2,8 @@
 
 - **Status:** Proposed
 - **Date:** 2026-11-16 (rewritten on 2026-11-19; the first version gave every
-  host to one tenant and rejected a shared host, see Alternatives)
+  host to one tenant and rejected a shared host, see Alternatives; internal
+  hosts added on 2026-11-26)
 
 ## Context
 
@@ -61,8 +62,30 @@ ConfigMap.
   service CA, for the router's connection.
 - **An API on a shared host** must have its `path` under one of its tenant's
   prefixes on that host; the `api` template refuses any other (ADR-0005).
+- **Internal hosts:** the platform may grant a tenant host names on the
+  cluster router's own domain (bootstrap values `gateway.internalDomain` and
+  `gateway.internalHosts`, per tenant), as today's internal host of each API
+  (`<gateway>-<namespace>.<router domain>`):
+
+```yaml
+gateway:
+  internalDomain: apps.cluster.example.com
+  internalHosts:
+    team-a: [orders-team-a.apps.cluster.example.com]
+```
+
+Each is one DNS label under `internalDomain`, so the router's own wildcard
+certificate covers it. The parent refuses an internal host outside that
+domain, one granted to two tenants, and one equal to an extra hostname or a
+shared host. The tenant's gateway request renders one reencrypt OpenShift
+`Route` per internal host, with no path, to the gateway's Service, as
+today; the gateway gets the `entry` listener. An API also answers on an
+internal host when its `api` instance names it in `internalHost`; APIs
+share an internal host by path, as any host (ADR-0005).
+
 - **Nobody else claims these hosts:** admission refuses a tenant's OpenShift
-  `Route` for a host under the base domain or for a shared host (ADR-0008).
+  `Route` for a host under the base domain, for a shared host, or for a
+  granted internal host (ADR-0008).
 - TLS for the tenant's own and extra hostnames: one certificate per listener,
   from a platform-named issuer (Q10). G.0 measures how the entry point reaches
   those listeners, and G.18 renders it.
@@ -83,6 +106,12 @@ ConfigMap.
   guard for every shared host and the base domain (G.8, G.23).
 - Host names under the base domain still show who owns an API; a shared host
   does not.
+- An API keeps today's internal host when it moves: the platform grants the
+  old name to the tenant. The old gateway's `Route` holds that host until it
+  is deleted, and the router then admits the tenant's `Route` (R5); that
+  switch is a step of the migration runbook.
+- The `entry` listener exists when a tenant has a shared-host prefix or an
+  internal host.
 
 ## Alternatives
 
@@ -96,3 +125,6 @@ ConfigMap.
   path, while the router already splits by path today.
 - **Free hostnames, checked at admission.** Rejected: the platform, not the
   tenant, decides which host and path a tenant serves.
+- **An internal host derived from the API's name** (`<api>-<tenant>.<router
+  domain>`), with no grant. Not chosen: a moved API would change its internal
+  host, so its internal callers would have to change.

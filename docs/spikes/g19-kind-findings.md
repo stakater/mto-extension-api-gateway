@@ -37,6 +37,16 @@ rest of its list.
 | Q20 | The root token floor changed (a third issuer added) while a client called every 0.25 s on one kept-open connection | 40 of 40 requests `200`. The gateway closed the connection once, gracefully (`Connection: close`), and the client reconnected with no error. |
 | Q19 | A third issuer whose key address can't be reached, in the same `RequestAuthentication` | istiod logs the failed fetch. Tokens of the reachable issuer still get `200`; tokens of the unreachable one get `401` "Jwt verification fails". |
 
+## Second run (2026-11-26): monitoring, STRICT and the rate limit configuration
+
+Same lab, for the parts of the design that copy today's charts.
+
+| Row | What was checked | Result |
+|---|---|---|
+| M23 | The metrics of the gateway and the waypoint, for a `PodMonitor` | Both pods have the port `metrics` (15020) and the annotations `prometheus.io/path: /stats/prometheus`. A scraper outside the mesh read `istio_requests_total` from both pods' IPs: the gateway reports as `source`, the waypoint as `waypoint`. |
+| M24 | Kubelet probes on a backend with STRICT mTLS | With readiness and liveness probes on the API's port, the pod became ready and did not restart. A pod outside the mesh still got a connection reset on `/metrics` and on an API path; the gateway still got `200`. |
+| S1 | A change of the rate limit `ConfigMap` while the service runs (the image digest today's chart pins, `RUNTIME_WATCH_ROOT=false`) | Three changes of one limit. Twice the service **crashed** when the file changed (`fatal error: concurrent map iteration and map write`, then `fatal error: unexpected signal during runtime execution`), restarted, and read the new limit on start, after about 60 s. Once it reloaded the file with no restart. **Design change: a limit change creates a new `ConfigMap` and rolls the pods; no running pod sees its file change** (design §3.1). |
+
 ## Still to check
 
 - The same on Istio 1.27 (Service Mesh 3.3's Istio).
@@ -44,4 +54,6 @@ rest of its list.
   T6, T7, issue #11).
 - Apply in any order with no request getting through (issue #10, AC-AUTH-7).
 - The `entry` listener with no hostname, and everything OpenShift-only (G.0:
-  R1–R4, M22, the expression descriptor in Service Mesh's proxy).
+  R1–R5, M22, the expression descriptor in Service Mesh's proxy).
+- A rolling restart of the rate limit service under load, with a new
+  `ConfigMap` (AC-RL-8), and the preflight under `helm template` (AC-OPS-7).

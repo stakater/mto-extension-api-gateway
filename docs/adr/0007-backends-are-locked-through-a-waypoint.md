@@ -2,7 +2,8 @@
 
 - **Status:** Proposed
 - **Date:** 2026-11-16 (rewritten on 2026-11-25; the first version locked the
-  backend pod at L4 with no waypoint, see Alternatives)
+  backend pod at L4 with no waypoint, see Alternatives; STRICT mTLS per tenant
+  added on 2026-11-26)
 
 ## Context
 
@@ -36,7 +37,8 @@ production, and an API must move with nothing broken (docs/migration.md).
   tenant's child renders, in the route's namespace:
     1. the waypoint `api-gateway-waypoint` (class `istio-waypoint`), one per
        namespace, autoscaled with platform values (default 3 to 5 pods, as
-       today);
+       today), with a `PodMonitor` for its metrics when the platform's
+       monitoring is on (M23, as today);
     1. an `AuthorizationPolicy` on the backend Service, enforced by the
        waypoint: **`DENY`** a request to any path but the open paths, from any
        identity but the tenant gateway's service account. This is today's
@@ -61,6 +63,15 @@ production, and an API must move with nothing broken (docs/migration.md).
   selector, an `ExternalName` that the extension didn't render (ADR-0014),
   or a namespace outside the mesh or
   without a waypoint gets no allowed-API rule.
+- **STRICT mTLS per tenant, a platform choice, off by default.** For a tenant
+  in `backendLock.strictMtlsTenants`, the child also renders, for every
+  locked backend Service, a `PeerAuthentication` `api.<api>.<service>` in the
+  route's namespace: the Service's pod selector, mode `STRICT`. Then a caller
+  outside the mesh is refused on every path, the open paths included; kubelet
+  probes and the gateway still pass (observed, M24). Today's chart has the
+  same option (`backendPodLabels`), unused. The platform turns it on for a
+  tenant whose scrapers are in the mesh, or that reads its backends' metrics
+  another way. It is never rendered for an API whose lock is off.
 - **During migration** the platform can add the old gateway's identity to an
   API's lock (`migration.oldGateways`), so both gateways pass while they run
   side by side (docs/migration.md).
@@ -74,11 +85,14 @@ production, and an API must move with nothing broken (docs/migration.md).
 - **Only mesh callers that use the Service pass the waypoint, as today.** A
   pod outside the mesh, calling the Service or a pod's IP, and a mesh pod
   calling a pod's IP, reach the backend directly and can set their own
-  headers (observed on kind, M21). This is a known limit (design §12). STRICT
-  mTLS on the backend pods refuses every caller outside the mesh, `/metrics`
-  included (observed); an L4 lock on the pod (the first version of this ADR)
-  also stops mesh pods on the pod's IP. Both cost scrapers on the API's port
-  and stay open choices.
+  headers (observed on kind, M21). This is a known limit (design §12). For a
+  tenant in `backendLock.strictMtlsTenants`, callers outside the mesh are
+  refused too, and so is a scraper outside the mesh on the backend's
+  `/metrics`. A mesh pod on the pod's IP still passes; an L4 lock on the pod
+  (the first version of this ADR) would stop it, at the same cost to
+  scrapers.
+- A `PeerAuthentication` applies to every pod that the Service selects. A
+  Service whose selector also matches other pods makes them STRICT too.
 - More pods than the first version: one waypoint per backend namespace with a
   locked API, as today.
 - With the lock off, any caller in the cluster can skip the gateway for that
@@ -95,6 +109,12 @@ production, and an API must move with nothing broken (docs/migration.md).
   port, which work today, so a production move could break them. It needs no
   waypoint pods and also stops calls to a pod's IP; it stays an option for
   backends whose metrics are on another port.
+- **STRICT mTLS for every tenant.** Not chosen: a scraper outside the mesh
+  could no longer read a backend's `/metrics`, so a production move could
+  break monitoring.
+- **STRICT mTLS as a team switch on the `api` instance** (as today's chart).
+  Not chosen: it changes what the tenant's monitoring can reach, which is the
+  platform's concern.
 - **Today's `ALLOW` form.** Rejected: the same behaviour, but another `ALLOW`
   on the Service widens it.
 - **No team switch.** Rejected: a backend in a shared namespace or outside

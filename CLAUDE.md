@@ -85,13 +85,15 @@ story-citation checks. Regenerate the golden only after an intended change:
 1. **A listener takes only its tenant** (ADR-0002, ADR-0009):
    `from: Selector` on `stakater.com/tenant`, a hostname under the tenant's
    name; never `from: All`. The only listener without a hostname is `entry`,
-   for the shared-host prefixes the platform grants (ADR-0009).
+   for the shared-host prefixes and internal hosts the platform grants
+   (ADR-0009).
 1. **Every API backend is locked to its tenant gateway, unless its team turns
    the lock off** (ADR-0007): a waypoint per backend namespace and a `DENY` on
    the backend Service, never an `ALLOW`; only the platform's exact open paths
    stay open. **Fail closed:** with the lock on, a backend that can't be locked
    gets no allowed-API rule, so its route serves nothing. Calls to a pod's IP
-   bypass the waypoint, as today: a documented limit. A backend outside the
+   bypass the waypoint, as today: a documented limit; the platform can add
+   STRICT mTLS per tenant (`backendLock.strictMtlsTenants`). A backend outside the
    cluster (`externalHost`, ADR-0014) has no lock, as today; only the
    extension's own `ExternalName` Service is accepted.
 1. **The gateway class is `istio`**, from the ambient mesh's own control
@@ -102,6 +104,11 @@ story-citation checks. Regenerate the golden only after an intended change:
    tenant. **A published template generation never changes**: every Template
    change goes into the next generation, a release holds at most two, and
    object names stay the same across generations (ADR-0015).
+1. **The bootstrap chart renders the same under Helm and Argo CD** (design
+   §9): no `lookup`; required APIs checked with `.Capabilities`; live checks
+   only in the preflight hook `Job`, never in a Template. A rate limit
+   configuration change creates a new `ConfigMap` and rolls the pods; a
+   running pod never reads a changed file (S1).
 
 ## Public repository
 

@@ -80,7 +80,9 @@ platform may also trust several issuers, or give a tenant its own
 |---|---|---|
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-token-floor` | `DENY` for every request without a valid token from one of the platform's issuers (`auth.issuers`), on every pod with the gateway label (M6, M12) |
 | `AuthorizationPolicy` (Istio root namespace) | `mto-api-gateway-default-deny` | `ALLOW` with no rules on the same pods: whatever no API rule allows is refused (M12) |
-| `Deployment`, `Service`, `ConfigMap` | `ratelimit` in `mto-api-gateways` | the rate limit service (Envoy's rate limit API) with its tier configuration from bootstrap values; Redis address and secret are values (ADR-0003); it reloads a changed configuration file itself, so the chart puts no checksum annotation on its pods and a configuration change restarts nothing |
+| `Deployment`, `Service`, `HorizontalPodAutoscaler`, `PodDisruptionBudget` | `ratelimit` in `mto-api-gateways` | the rate limit service (Envoy's rate limit API), with today's values as defaults: 3 to 8 pods at 70 % CPU, at least 2 available during a drain, spread over nodes and zones, one extra pod and none unavailable during a rollout, the image pinned by digest, and health probes that fail without Redis. The Redis address (one server or Sentinel) and its password Secret are values (ADR-0003) |
+| `ConfigMap` | `ratelimit-config-<hash>` | the tier configuration, from bootstrap values, immutable. The name carries a hash of the content, so a change of the limits creates a new `ConfigMap` and rolls the pods; no running pod reads a changed file, which crashed the service on kind (S1) |
+| `Job` (Helm hook) | `mto-api-gateway-preflight` | the live preflight, before every install, upgrade and Argo CD sync (§9, H3) |
 | `ValidatingAdmissionPolicy` + binding | `mto-api-gateway-tenants` | what tenant users may not do to a gateway (ADR-0008) |
 
 ```yaml
@@ -153,10 +155,12 @@ exempted API gets the full tier tree under its own entry (M18).
 
 | Kind | Name | What it does |
 |---|---|---|
-| `Gateway` (class `istio`, ADR-0010) | `api-gateway` | listener `tenant` for `*.team-a.apis.example.com` (and `extra-<n>` per granted host, and `entry` with no hostname when the tenant has shared-host prefixes, ADR-0009), routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); `ClusterIP` Service and the gateway label (M13, ADR-0002); Service Mesh deploys `api-gateway-istio` (M3) |
+| `Gateway` (class `istio`, ADR-0010) | `api-gateway` | listener `tenant` for `*.team-a.apis.example.com` (and `extra-<n>` per granted host, and `entry` with no hostname when the tenant has shared-host prefixes or internal hosts, ADR-0009), routes only from `stakater.com/tenant=team-a` namespaces (A1, A3); `ClusterIP` Service and the gateway label (M13, ADR-0002); Service Mesh deploys `api-gateway-istio` (M3) |
 | `ConfigMap` | `api-gateway-infra` | `spec.infrastructure.parametersRef` target: autoscaler and disruption budget (M3) |
 | `Certificate` (or a platform-provided Secret) | `api-gateway-tls`, `api-gateway-tls-extra-<n>` | one per listener (Q10); the `entry` listener's Secret `api-gateway-entry-tls` comes from OpenShift's service CA (R3) |
 | OpenShift `Route` | `api-gateway-shared-<n>` | only with shared-host prefixes: one reencrypt `Route` per granted prefix, to the Service `api-gateway-istio` (ADR-0009, R1) |
+| OpenShift `Route` | `api-gateway-internal-<n>` | only with internal hosts: one reencrypt `Route` per granted internal host, with no path, to the Service `api-gateway-istio`, as today's internal host (ADR-0009) |
+| `PodMonitor` | `api-gateway` | the gateway pods' metrics: the port `metrics`, `/stats/prometheus`, every `monitoring.podMonitor.interval` (M23); only when `monitoring.podMonitor.enabled`, as today |
 | `ConfigMap` | `api-gateway-status` | `ok` with the tenant and host names, or `refused` with the reason |
 
 ```yaml
@@ -196,7 +200,7 @@ spec:
 | `EnvoyFilter` | `api-gateway-strip-headers` | removes the caller's copies of every claim header, their underscore variants and the platform's reserved names, before `jwt_authn` (ADR-0003) |
 | `EnvoyFilter` | `api-gateway-ratelimit` | Envoy's rate limit filter before `router`, and virtual-host actions with no name (M14): one entry per API, matched on the API's host and path, with the descriptors `tenant`, `api`, `tier` (the caller's highest tier role for the API, by exact text; the lowest when none, ADR-0003, M20), `azp` (M18) |
 | `EnvoyFilter` | `api-gateway-correlation-id` | only with the knob: the platform's correlation header from `x-request-id` when the caller sent none |
-| `Telemetry` | `api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers |
+| `Telemetry` | `api-gateway-telemetry` | only with the knobs: an access log provider from the platform's list, extra trace headers, and, when the platform configures tracing, the platform's sampling rate (default 100 %, as today, ADR-0012) |
 | `ConfigMap` | `api-gateway-apis` | the tenant's APIs, routes that are not APIs, conflicts, refused knobs (§7) |
 
 ```yaml
@@ -314,8 +318,10 @@ spec:
 With the correlation-ID knob on, a third filter merges into the route
 configuration (`request_headers_to_add`: the platform's header from
 `%REQ(X-REQUEST-ID)%`, `ADD_IF_ABSENT`). With the telemetry knobs on, a
-`Telemetry` selects the gateway's pods with the chosen access log provider and
-the extra trace headers as custom tags.
+`Telemetry` selects the gateway's pods with the chosen access log provider,
+the extra trace headers as custom tags, and
+`randomSamplingPercentage: <telemetry.tracing.samplingPercentage>`. A
+gateway without these knobs follows the mesh's own sampling rate, as today.
 
 ### 3.4 Per API, in the API's namespace (`api` Template)
 
@@ -341,6 +347,7 @@ spec:
 | Parameter | Required | Checks |
 |---|---|---|
 | `host` | no | a lowercase host name, no wildcard; one of the tenant's hostnames, or a shared host when `path` is under one of the tenant's prefixes there (ADR-0009) |
+| `internalHost` | no | one of the internal hosts the platform granted to the tenant; the API also answers there, on the same path (ADR-0009) |
 | `path` | yes | starts with `/`; segments of letters, digits, `-`, `.`, `_`, `~`; no empty, `.` or `..` segment; no trailing `/`, except `/` alone |
 | `rewrite` | no | as `path`; not with `operations` |
 | `service`, `port` | yes (`service` unless `externalHost`) | a `Service` name (DNS label) in the instance's namespace; a port 1–65535 |
@@ -352,6 +359,9 @@ spec:
 
 "Under" a prefix means segment by segment (ADR-0005): `/orders-v2/v1` is
 under `/orders-v2`, not under `/orders`.
+
+With `internalHost`, the route, the API rule and the rate limit entry name
+both hosts; the path checks of ADR-0005 apply on each host.
 
 It renders, in `team-a-dev`, the `HTTPRoute` and the ConfigMap `api.orders`
 (`status: ok` with the URL and the rule, or `status: refused` with the
@@ -401,6 +411,8 @@ For the API `orders` (the route `api.orders` in `team-a-dev`, host
 | `AuthorizationPolicy` `ALLOW` | the gateway's (`team-a-dev`) | `api.orders` | targets the `Gateway`; the route's host and path (or exact operations); the closed rule `api.team-a.orders` (ADR-0006); `azp` and every mapped claim required; the API's issuers only (ADR-0004) |
 | `AuthorizationPolicy` `DENY` | the route's | `api.orders.<service>` | one per backend Service, enforced by the namespace's waypoint: `DENY` every path but the platform's open paths, from every identity but `api-gateway-istio` (ADR-0007); not rendered when the team set `backendLock: "off"` |
 | `Gateway` (class `istio-waypoint`) | the route's | `api-gateway-waypoint` | one per namespace with a locked API: the waypoint that enforces the lock, autoscaled with platform values; the namespace selects a waypoint with the label `istio.io/use-waypoint`, set through the `Tenant` (ADR-0007) |
+| `PodMonitor` | the route's | `api-gateway-waypoint` | the waypoint's metrics, as for the gateway (M23); only when `monitoring.podMonitor.enabled` |
+| `PeerAuthentication` | the route's | `api.orders.<service>` | only for a tenant in `backendLock.strictMtlsTenants`, and only with the lock on: mode `STRICT` on the pods the Service selects, so a caller outside the mesh is refused on every path (ADR-0007, M24) |
 
 The allowed-API rule is rendered **only when every backend can be locked, or
 its team turned the lock off** and
@@ -455,7 +467,9 @@ spec:
 The gateway's own traffic skips the waypoint (M4); every other caller of the
 Service passes it and is refused on the API's paths. The open paths stay open
 to anyone, as today, so probes and scrapers keep working. A call to a pod's
-IP doesn't pass the waypoint (M21, §12). No `ReferenceGrant`: the route and
+IP, and a call from outside the mesh, doesn't pass the waypoint (M21, §12);
+STRICT mTLS, when the platform turns it on for the tenant, refuses the
+callers outside the mesh. No `ReferenceGrant`: the route and
 its backends are in the same namespace (A2). The extension never writes to
 the `HTTPRoute` itself.
 
@@ -499,8 +513,10 @@ The **render check** (`hack/`, in `make verify`) fails when, for any fixture:
   locked (with the lock on) or a host it doesn't own; or a backend lock
   opens a path that isn't in the platform's list, or uses a pattern;
 - a listener allows routes `from: All` or `Same`, or has no hostname, except
-  `entry` for a tenant with shared-host prefixes (AC-R-5);
-- a gateway is not `ClusterIP` or lacks the gateway label (AC-R-7).
+  `entry` for a tenant with shared-host prefixes or internal hosts (AC-R-5);
+- a gateway is not `ClusterIP` or lacks the gateway label (AC-R-7);
+- the bootstrap chart uses `lookup` (H1), or a Template carries a Helm hook
+  annotation (AC-OPS-7).
 
 Every guard in the check has a mutation test, as in the Enterprise harness.
 
@@ -525,11 +541,13 @@ G.19 tests a missing claim and a claim that is a single string (Q4).
 |---|---|---|
 | `Gateway` | `<request>`: the `TemplateInstance` name | a DNS label ≤ 48 (the parent refuses others) |
 | Gateway Deployment, Service, ServiceAccount | `<request>-istio` (M3) | fits |
-| Per-request objects | `<request>-infra`, `<request>-tls`, `<request>-tls-extra-<n>`, `<request>-status` | request ≤ 48, so the longest stays ≤ 63 |
+| Per-request objects | `<request>-infra`, `<request>-tls`, `<request>-tls-extra-<n>`, `<request>-shared-<n>`, `<request>-internal-<n>`, `<request>-status`; the `PodMonitor` `<request>` | request ≤ 48, so the longest stays ≤ 63 |
 | Per-tenant objects (child) | `<request>-jwt`, `<request>-strip-headers`, `<request>-ratelimit`, `<request>-correlation-id`, `<request>-telemetry`, `<request>-apis` | ≤ 63 |
 | The child `TemplateInstance` | `api-gateway-policy-<tenant>`, in `mto-api-gateways` | tenant ≤ 63; the parent shortens with a hash when needed |
 | The child Template | `api-gateway-policy-<generation>` (`api-gateway-policy-g1`), at most two in a release; the team-facing `api-gateway` and `api` keep their names (ADR-0015) | fixed |
-| Per-API objects | `HTTPRoute` and ConfigMap `api.<api>` (the API's namespace, from the `api` instance); `api.<api>` (gateway's namespace), `api.<api>.<service>` (route's namespace): dot-joined, so they never meet a request's hyphen-joined names | API name + Service name ≤ 240 |
+| Per-API objects | `HTTPRoute` and ConfigMap `api.<api>` (the API's namespace, from the `api` instance); `api.<api>` (gateway's namespace), `api.<api>.<service>` (route's namespace: the lock's `AuthorizationPolicy`, and the `PeerAuthentication` when STRICT): dot-joined, so they never meet a request's hyphen-joined names | API name + Service name ≤ 240 |
+| Per backend namespace | the waypoint `Gateway` and its `PodMonitor`, both `api-gateway-waypoint` | fixed |
+| Rate limit configuration | `ratelimit-config-<hash>`, the first 10 characters of the content's SHA-256 | fixed length |
 | Root-namespace objects | `mto-api-gateway-token-floor`, `mto-api-gateway-default-deny` | fixed |
 | Hostname | `*.<tenant>.<base domain>`; an API's host under it or a granted host; APIs share a host by path (ADR-0005) | DNS limits: label ≤ 63, name ≤ 253 |
 
@@ -606,11 +624,33 @@ metadata:
 
 ## 9. Health and preflight
 
-- **Preflight** (bootstrap chart, at install and on upgrade): the GatewayClass
-  exists; the Gateway API and Istio security, networking and telemetry CRDs
-  exist; at least one issuer is set, and every name in `auth.defaultIssuers` and `auth.tenantIssuers` is defined; the Redis address is set; each component is at
-  or above its floor in [`support-matrix.md`](support-matrix.md). A missing
-  piece fails the install and names it.
+- **Preflight** (bootstrap chart), in three layers, so that it works the same
+  under `helm install`, `helm upgrade` and Argo CD, which renders with
+  `helm template` (H1–H3). The chart uses no `lookup`, which returns nothing
+  there; a render check fails on one.
+    1. **Values**, by `values.schema.json`, in every renderer: at least one
+       issuer, every name in `auth.defaultIssuers` and `auth.tenantIssuers`
+       defined, the Redis address set, only the release's generations named.
+    1. **APIs**, by `.Capabilities.APIVersions.Has`, which Helm and Argo CD
+       fill from the cluster (H2): the Gateway API; Istio's security,
+       networking and telemetry APIs; Template Operator v2; OpenShift's
+       `Route` when a tenant has a shared host or an internal host;
+       `monitoring.coreos.com/v1` `PodMonitor` when monitoring is on;
+       cert-manager when `gateway.tls.certManager` is set. A missing API
+       fails the render, and the error names it. A plain `helm template`
+       passes `--api-versions`, as the render tests do.
+    1. **Live state**, by the hook `Job` `mto-api-gateway-preflight`
+       (`pre-install,pre-upgrade`; Argo CD runs it as `PreSync` on every sync,
+       H3), with read-only access: the GatewayClass `istio` exists and is
+       accepted; Service Mesh, the Gateway API and Template Operator are at
+       or above their floors in [`support-matrix.md`](support-matrix.md);
+       istiod reloads keys every 3 minutes (M19); the Redis password Secret
+       exists. A failed check fails the `Job`, which stops the install or the
+       sync; its log names each missing piece. `preflight.enabled` (default
+       on) and `preflight.image` are platform values.
+
+  The hook belongs to the bootstrap chart only. A Template never carries a
+  Helm hook: Template Operator runs none (issue #6).
 - **Outputs** (Template Operator status outputs, as in the Enterprise
   extension): per tenant, the gateway's `Programmed` condition and the child's
   apply status (G.6).
@@ -637,7 +677,13 @@ metadata:
 - A Redis for the rate limit counters; its address and password secret are
   bootstrap values.
 - Access log providers, when teams may choose one, defined in the mesh
-  configuration; their names listed in the bootstrap values.
+  configuration; their names listed in the bootstrap values. A tracing
+  provider in the mesh configuration when the platform turns tracing on.
+- With `monitoring.podMonitor.enabled` (the default, as today): the
+  `PodMonitor` API and a Prometheus that reads `PodMonitor`s in tenant
+  namespaces (OpenShift's monitoring for user projects).
+- For internal hosts: the cluster router's domain (`gateway.internalDomain`)
+  and its wildcard certificate, as today.
 - An entry point per tenant gateway, measured in G.0 and rendered in G.18:
     - the listener's hostname needs the caller's TLS server name (SNI). A
       reencrypt OpenShift `Route` is reported not to send it, and a
@@ -690,12 +736,6 @@ request.
   retries, weights, or regular-expression, header or query matches; each is
   a new parameter (ADR-0005). Today's charts allow header and query matches,
   but no API uses them.
-- **Not designed yet** (found by comparing with today's charts,
-  [`parity.md`](parity.md)): the trace sampling rate of each gateway (today
-  100 %); the rate limit service's replicas, disruption budget, spread and
-  resources (Q12); `PodMonitor`s for the gateway and the waypoint; the
-  internal host per API (G.18); a preflight that also works when Argo CD
-  renders the chart with `helm template`, where `lookup` returns nothing.
 - **Stakater owns three `EnvoyFilter`s,** a Developer Preview API in Service
   Mesh 3, and depends on Istio's outbound cluster name; the upgrade suite
   (G.10) runs on every Service Mesh minor before a release supports it.
@@ -722,11 +762,18 @@ request.
 - **The backend lock covers mesh callers that use the Service, as today.** A
   pod outside the mesh (calling the Service or a pod's IP) and a mesh pod
   calling a pod's IP reach the backend directly and can set their own headers
-  (ADR-0007, observed on kind). STRICT mTLS on the backend pods refuses every
-  caller outside the mesh, `/metrics` included; an L4 lock on the pod also
-  stops mesh pods on the pod's IP. Both cost scrapers on the API's port and
-  stay open choices. Other in-mesh callers
-  of the API's paths are refused; allowing named internal callers is G.17.
+  (ADR-0007, observed on kind). The platform can close the gap from outside
+  the mesh for a tenant with STRICT mTLS (`backendLock.strictMtlsTenants`),
+  off by default: it also refuses a scraper outside the mesh on the
+  backend's `/metrics`. A mesh pod on a pod's IP still passes. Other in-mesh
+  callers of the API's paths are refused; allowing named internal callers is
+  G.17.
+- **A change of the rate limits restarts the rate limit service,** one pod at
+  a time, because a changed file crashed it on kind (S1). The service exports
+  no metrics, as today; observability is G.14.
+- **An internal host is a platform grant per tenant** (ADR-0009). A moved API
+  keeps its internal host only after the old gateway's `Route` for it is
+  deleted (R5).
 - **A team can turn its backend lock off** (`backendLock: "off"`), as today;
   the backend must then check the caller itself. The platform can stop this
   for a tenant (`backendLock.lockedTenants`).
@@ -743,8 +790,10 @@ request.
   backends decode it.
 - **Unauthenticated floods are refused, not rate limited.** Rate limits count
   authenticated callers; the entry point limits the rest.
-- **Behaviour on kind and on OpenShift** is read from docs and source until
-  G.19 and G.0 observe it.
+- **Behaviour on OpenShift** is read from docs and source until G.0 observes
+  it. The first kind runs are in
+  [`spikes/g19-kind-findings.md`](spikes/g19-kind-findings.md); G.19 repeats
+  them in the lab.
 
 ## 13. Upgrades: staged, with no downtime (ADR-0015)
 

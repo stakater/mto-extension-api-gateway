@@ -28,8 +28,9 @@ Fixture:
 - Tenants `team-a` (namespaces `team-a-dev`, `team-a-test`, and
   `team-a-outside`, which is not in the mesh), `team-b` (`team-b-dev`) and
   `team` (`team-core`), whose name is a prefix of `team-a`'s. `team-a` is
-  granted the extra hostname `api.team-a.example.org`. The platform exempts
-  `team-b` from the rate limit.
+  granted the extra hostname `api.team-a.example.org` and the internal host
+  `orders-team-a.apps.cluster.example.com` on the cluster router. The
+  platform exempts `team-b` from the rate limit.
 - Gateway requests (`TemplateInstance`s of `api-gateway`, no parameters):
   `api-gateway` in `team-a-dev` (team-a's gateway), with the annotations
   `claim-headers: client_id=x-client` and `correlation-id: "on"`; `gw` in
@@ -146,6 +147,25 @@ is refused with the reason in `api.stray`, the lock stays on, and the API
 still serves nothing.
 A render check fails on an open path that isn't in the platform's list, or
 that uses a pattern.
+
+**AC-ISO-12 — STRICT mTLS closes the path from outside the mesh, per
+tenant.** *(R+L)* With `team-a` in `backendLock.strictMtlsTenants`,
+`outsider` calling Service `orders` and an `orders` pod's IP is refused
+(connection reset) on `/orders/v1` and on `/metrics`; `shop` through
+`team-a`'s gateway gets `200`; the `orders` pod's kubelet probes pass and it
+doesn't restart. Without the value, `outsider` reaches the open paths, as in
+AC-ISO-5. Render: a `PeerAuthentication` `STRICT` is rendered only for a
+locked API of a listed tenant, with the backend Service's selector.
+
+**AC-ISO-13 — An internal host serves only the tenant it is granted to.**
+*(R+L, OpenShift)* `orders` sets `internalHost:
+orders-team-a.apps.cluster.example.com`. Through the cluster router, `shop`
+gets `200` from `orders` on that host and `/orders/v2/x`, and `403` on
+`/payments/v1/x` there. An `api` instance of `team-b` that names the same
+internal host is `refused`; a platform value that grants it to `team-b` too is
+refused by the parent. As `alice`, an OpenShift `Route` for that host is
+refused (G.23). Render: one reencrypt `Route` with no path per granted
+internal host, to `team-a`'s gateway Service, and the `entry` listener.
 
 **AC-EXT-1 — An API with a backend outside the cluster.** *(R+L)* The `api`
 instance `partner` sets `externalHost` to a lab host outside the mesh, with
@@ -286,12 +306,22 @@ filter stays, `reports` has no rate limit entry, and the tenant's status lists
 it as off. With `team-a` in `rateLimit.lockedTenants`, the same parameter is
 refused with the reason in `api.reports`, and `reports` keeps its limit.
 
+**AC-RL-8 — A change of the limits rolls the service with no failed
+request.** *(R+L)* While `shop` calls `orders` 10 times per second, the
+platform changes the `silver` rate. A new `ratelimit-config-<hash>` is
+rendered, the pods restart one at a time with none unavailable, no pod
+restarts on its own, `shop` sees no `5xx`, and the new rate holds after the
+rollout. Render: the `ConfigMap` is immutable and its name changes with its
+content.
+
 ## Team settings
 
 **AC-KNOB-1 — Valid settings apply.** *(R+L)* On `team-a`'s gateway, the echo
 backend reports `x-client` = `shop-app` from the token, and a correlation
 header with an id; `shop` sending `x-client: admin` still reports `shop-app`;
-`shop` sending its own correlation header gets it back unchanged.
+`shop` sending its own correlation header gets it back unchanged. With
+`access-log` set and the platform's tracing on, the gateway's `Telemetry`
+samples `telemetry.tracing.samplingPercentage` of its requests (render).
 
 **AC-KNOB-2 — Invalid and unknown settings are refused and listed.** *(R+L)*
 `team-b`'s `api-gateway-apis` ConfigMap lists `claim-headers` as refused
@@ -337,8 +367,8 @@ listener has `allowedRoutes.namespaces.from: Selector` on
 `stakater.com/tenant: <tenant>` and hostname `*.<tenant>.<base domain>` (or a
 granted extra hostname); no listener has `from: All`. The only listener
 without a hostname is `entry`, and only a tenant with shared-host prefixes
-has it (ADR-0009); a fixture with any other listener without a hostname, or
-with `entry` for a tenant without prefixes, fails.
+or internal hosts has it (ADR-0009); a fixture with any other listener without
+a hostname, or with `entry` for a tenant with neither, fails.
 
 **AC-R-6 — Per-API rules are scoped to their API's host and path.** *(R)*
 Every per-API `ALLOW` names only its route's host, and its path as `<path>`
@@ -420,6 +450,21 @@ load: a rolling restart of a tenant gateway and of a waypoint, and a move of
 `team-a`'s gateway to another Istio revision and back, each end with no failed
 request.
 
+**AC-OPS-7 — The preflight works under Helm and Argo CD.** *(R+L)* Render:
+the bootstrap chart contains no `lookup`; without an issuer, the schema
+refuses the values and names the key; with `--api-versions` that lack
+`security.istio.io/v1`, the render fails and names the API; no Template
+carries a Helm hook. Live: on a cluster without the GatewayClass `istio`, the
+preflight `Job` fails and its log names it, under `helm install` and as an
+Argo CD `PreSync` hook; with everything in place it passes and the install
+goes on.
+
+**AC-OPS-8 — The gateway and the waypoint are scraped.** *(R+L)* With
+`monitoring.podMonitor.enabled`, a `PodMonitor` selects `team-a`'s gateway
+pods and one selects each waypoint, on the port `metrics` and
+`/stats/prometheus`; Prometheus shows `istio_requests_total` for `orders`
+from both. With the value off, neither is rendered.
+
 ## Migration
 
 Production gateways move one API at a time, on the test cluster first. The
@@ -430,7 +475,9 @@ per-API gateway and the tenant gateway serve `orders` side by side, on the
 same shared host and path. One change moves the entry point for that path to
 the tenant gateway; one change moves it back. A client calling once per
 second through both changes sees no `5xx` and no change of address. The
-per-API gateway is removed only after the agreed period.
+per-API gateway is removed only after the agreed period. An API with an
+internal host keeps it: the platform grants the old name to the tenant, and
+the old gateway's `Route` for it is deleted in the switch (R5).
 
 **AC-MIG-2 — Today's tokens work unchanged.** *(L)* With
 `migration.legacyRoles: {team-a.orders: api-orders-consumer}`, `legacy-shop`'s
