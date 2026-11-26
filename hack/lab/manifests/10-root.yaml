@@ -1,0 +1,18 @@
+# Bootstrap chart, design §3.1: the token floor (every registered issuer) and the default deny.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: mto-api-gateway-token-floor, namespace: istio-system, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  selector: { matchLabels: { api-gateway.stakater.com/gateway: "true" } }
+  action: DENY
+  rules:
+    - from:
+        - source:
+            notRequestPrincipals: ["https://idp-a.lab/realms/apis/*", "https://idp-b.lab/realms/apis/*"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: mto-api-gateway-default-deny, namespace: istio-system, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  selector: { matchLabels: { api-gateway.stakater.com/gateway: "true" } }
+  action: ALLOW

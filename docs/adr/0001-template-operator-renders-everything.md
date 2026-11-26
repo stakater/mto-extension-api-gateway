@@ -85,6 +85,12 @@ an API team instantiates once per API.
 - The policy must exist before Template Operator renders anything of ours:
   the bootstrap chart applies it before the parent `TemplateInstance` (an
   Argo CD sync wave); under Helm, the preflight covers the first install.
+- The label is also in the gateway's `infrastructure.labels`, so the
+  Deployment, Service and ServiceAccount that Istio creates for the gateway
+  carry it, and the preflight doesn't take them for another owner's objects
+  (observed on kind, G.19). Every object carries the label from the first
+  release: the policy refuses to add it to a live object later, also when
+  Istio's controller does it.
 - A cluster admin who puts the label on a live object by hand makes it
   open to a takeover; the label is a platform label, like the tenant label
   (T5).

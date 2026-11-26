@@ -1,0 +1,54 @@
+# A backend outside the cluster (ADR-0014). The lab uses a public echo host, so this needs internet.
+apiVersion: v1
+kind: Service
+metadata: { name: mto-api-partner-external, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  type: ExternalName
+  externalName: httpbin.org
+  ports: [{ name: https, port: 443, protocol: TCP }]
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata: { name: api.partner.external, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  hosts: [httpbin.org]
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports: [{ name: tcp, number: 443, protocol: TCP }]
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata: { name: api.partner.external, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  host: httpbin.org
+  trafficPolicy: { tls: { mode: SIMPLE, sni: httpbin.org } }
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api.partner
+  namespace: team-a-dev
+  labels: { api-gateway.stakater.com/managed: "true" }
+  annotations: { api-gateway.stakater.com/api: partner }
+spec:
+  parentRefs: [{ name: mto-api-gateway, namespace: team-a-dev }]
+  hostnames: ["orders.team-a.apis.example.com"]
+  rules:
+    - matches: [{ path: { type: PathPrefix, value: /partner/v1 } }]
+      filters:
+        - type: URLRewrite
+          urlRewrite: { hostname: httpbin.org, path: { type: ReplacePrefixMatch, replacePrefixMatch: /anything/partner } }
+      backendRefs: [{ name: mto-api-partner-external, port: 443 }]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: api.partner, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  targetRefs: [{ group: gateway.networking.k8s.io, kind: Gateway, name: mto-api-gateway }]
+  action: ALLOW
+  rules:
+    - from: [{ source: { requestPrincipals: ["https://idp-a.lab/realms/apis/*"] } }]
+      to: [{ operation: { hosts: ["orders.team-a.apis.example.com", "orders.team-a.apis.example.com:*"], paths: ["/partner/v1", "/partner/v1/*"] } }]
+      when:
+        - { key: "request.auth.claims[allowed_apis]", values: ["api.team-a.partner", "api.team-a.partner.*"] }
+        - { key: "request.auth.claims[azp]", values: ["*"] }

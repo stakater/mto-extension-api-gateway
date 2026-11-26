@@ -1,0 +1,18 @@
+# What the lab's Template Operator may read and render (the bootstrap chart grants this for real).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: lab-template-operator }
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways, httproutes]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: lab-template-operator }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: lab-template-operator }
+subjects:
+  - { kind: ServiceAccount, name: template-operator-v2-controller-manager, namespace: template-operator-v2-system }

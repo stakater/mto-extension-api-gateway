@@ -1,0 +1,17 @@
+# The backend lock (ADR-0007): the waypoint of team-a-dev and a DENY on the orders Service.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata: { name: mto-api-gateway-waypoint, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  gatewayClassName: istio-waypoint
+  listeners: [{ name: mesh, port: 15008, protocol: HBONE }]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata: { name: api.orders.orders, namespace: team-a-dev, labels: { api-gateway.stakater.com/managed: "true" } }
+spec:
+  targetRefs: [{ group: "", kind: Service, name: orders }]
+  action: DENY
+  rules:
+    - from: [{ source: { notPrincipals: ["cluster.local/ns/team-a-dev/sa/mto-api-gateway-istio"] } }]
+      to: [{ operation: { notPaths: ["/metrics", "/health", "/health/live", "/health/ready", "/healthz"] } }]

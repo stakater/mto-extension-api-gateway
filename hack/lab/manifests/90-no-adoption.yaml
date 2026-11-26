@@ -1,0 +1,25 @@
+# Bootstrap chart, ADR-0001: never take over a live object. Applied by the Template Operator checks.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata: { name: mto-api-gateway-no-adoption }
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["", "gateway.networking.k8s.io", "security.istio.io", "networking.istio.io", "telemetry.istio.io", "monitoring.coreos.com", "route.openshift.io", "cert-manager.io"]
+        apiVersions: ["*"]
+        operations: ["UPDATE"]
+        resources: ["configmaps", "services", "gateways", "httproutes", "authorizationpolicies", "requestauthentications", "peerauthentications", "envoyfilters", "serviceentries", "destinationrules", "telemetries", "podmonitors", "routes", "certificates"]
+  matchConditions:
+    - name: renders-our-object
+      expression: "has(object.metadata.labels) && object.metadata.labels[?'api-gateway.stakater.com/managed'].orValue('') == 'true'"
+  validations:
+    - expression: "has(oldObject.metadata.labels) && 'api-gateway.stakater.com/managed' in oldObject.metadata.labels"
+      messageExpression: "object.kind + ' ' + object.metadata.namespace + '/' + object.metadata.name + ' exists and was not rendered by the API gateway extension; it is never taken over'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata: { name: mto-api-gateway-no-adoption }
+spec:
+  policyName: mto-api-gateway-no-adoption
+  validationActions: [Deny]

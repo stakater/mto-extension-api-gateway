@@ -45,7 +45,7 @@ Same lab, for the parts of the design that copy today's charts.
 |---|---|---|
 | M23 | The metrics of the gateway and the waypoint, for a `PodMonitor` | Both pods have the port `metrics` (15020) and the annotations `prometheus.io/path: /stats/prometheus`. A scraper outside the mesh read `istio_requests_total` from both pods' IPs: the gateway reports as `source`, the waypoint as `waypoint`. |
 | M24 | Kubelet probes on a backend with STRICT mTLS | With readiness and liveness probes on the API's port, the pod became ready and did not restart. A pod outside the mesh still got a connection reset on `/metrics` and on an API path; the gateway still got `200`. |
-| S1 | A change of the rate limit `ConfigMap` while the service runs (the image digest today's chart pins, `RUNTIME_WATCH_ROOT=false`) | Three changes of one limit. Twice the service **crashed** when the file changed (`fatal error: concurrent map iteration and map write`, then `fatal error: unexpected signal during runtime execution`), restarted, and read the new limit on start, after about 60 s. Once it reloaded the file with no restart. **Design change: a limit change creates a new `ConfigMap` and rolls the pods; no running pod sees its file change** (design §3.1). |
+| S1 | A change of the rate limit `ConfigMap` while the service runs (the image digest today's chart pins, `RUNTIME_WATCH_ROOT=false`) | Three changes of one limit. Twice the service **crashed** when the file changed (`fatal error: concurrent map iteration and map write`, then `fatal error: unexpected signal during runtime execution`), restarted, and read the new limit on start, after about 60 s. Once it reloaded the file with no restart. **Design change: a limit change creates a new `ConfigMap` and rolls the pods; no running pod sees its file change** (design §3.1). **Corrected in the G.19 lab run:** the image is built for amd64 only and ran under emulation on this ARM machine; it also crashed under plain traffic there. With a multi-arch image, the changes loaded with no restart. The crashes were the emulation, not the service. |
 
 ## Third run (2026-11-26): no takeover at admission
 
@@ -74,13 +74,80 @@ started no pods. The same results on both versions:
 Issue #11 is answered: the three guards of ADR-0001 hold on both versions.
 G.29 builds them into the chart.
 
+## G.19 lab run (2026-11-26): the repo lab, on Istio 1.27.9 and 1.30.8
+
+The lab in [`hack/lab/`](../../hack/lab/README.md) (`make lab-up lab-test`)
+repeats every check above, on a clean kind cluster, with the fixture names of
+`acceptance.md` and the gateway named `mto-api-gateway`. Template Operator
+`main` (`a07748b`), built from source. **Both Istio versions: 81 results, 0
+failed, the same result on every row.** Each denial is paired with an allow.
+
+| Area | Rows | Result on 1.27.9 and 1.30.8 |
+|---|---|---|
+| Token check, floor, default deny | M12, M17, Q18, AC-AUTH-1/2/3/9/10 | no token, a path of no API, a token without the API: `403`; a bad signature, an expired token, an issuer the gateway doesn't trust: `401`; a token in `?access_token=`: `403` |
+| Claim headers | M7, AC-AUTH-4 | `x-sub` and `x-roles` set from the token, the caller's copies removed; no `Authorization` sent on |
+| Two APIs on one host | M16, Q16, AC-AUTH-8 | six path tricks refused with `403`; each API's own caller `200` |
+| The closed rule | M10, ADR-0006 | another tenant's API, `orders2`, no `azp`: `403`; a string claim and today's role name: `200` |
+| Rate limits | M14, M18, M20, AC-RL-1..4/6 | gold 20, silver 10, no tier role and an unknown tier 4, two tiers 20, a string claim 20, today's role name 10 (lab rates per minute); one caller, two APIs, two counters; no `azp` refused; the limiter down: all pass |
+| Backend lock | M4, Q5, M21, Q21, AC-ISO-5 | another mesh pod `403` on the API's path; open paths reach the backend; the gateway skips the waypoint, also under a deny-all; a pod's IP and callers outside the mesh reach the backend (the known limit) |
+| STRICT mTLS | M24, AC-ISO-12 | callers outside the mesh refused on every path; the gateway `200`; probes pass, no restart |
+| Metrics | M23 | the gateway's and the waypoint's `istio_requests_total` on port 15020 |
+| Root policy change, unreachable issuer | Q19, Q20 | 18 of 18 calls on a kept-open connection; the reachable issuer `200`, the unreachable one `401` |
+| External backend | Q22, AC-EXT-1 | `200` over TLS with the `Host` rewritten and no token sent; without the role `403` |
+| Any apply order | AC-AUTH-7, issue #10 | three shuffled orders of the tenant's six objects, four attackers, 50 calls each: never a `200` |
+| Takeover | T4, T10, AC-LIFE-7 | without the admission policy, a live `Gateway` taken over and deleted; with it, nothing applied and both objects unchanged; the preflight name check names them; another extension's takeover still works |
+| Template Operator lists and keys | T6, T7 | see below |
+
+New facts from this run, now in the design:
+
+- **The gateway's own Service is not ours to Istio.** Istio copies only
+  `spec.infrastructure.labels` onto the Deployment, Service and
+  ServiceAccount it creates, so the extension's label goes there too, or the
+  preflight takes `mto-api-gateway-istio` for another owner's object (design
+  §3.2, ADR-0001).
+- **T7, an empty LIST.** With the JSONPath `.items`, a LIST of no objects
+  resolves to `[]` and the instance renders. With `.items[*].metadata.name`
+  it fails ("matched zero results") and the whole instance is not ready: a
+  tenant with no routes would get no policy. LIST parameters use `.items`.
+- **T6, a missing key.** A field path to a missing annotation fails the
+  render; `index` renders but prints `<no value>`, so an optional key needs
+  `default ""`.
+- **A mesh pod can call the gateway's Service** (`200`): Istio marks the
+  gateway's pods `istio.io/dataplane-mode: none`, so the waypoint of the
+  gateway's namespace is not in that path.
+- **Istio warns** that a `DENY` with only HTTP attributes refuses all TCP
+  traffic in its scope: non-HTTP traffic to a locked Service is refused,
+  which fits the lock.
+- **S1 corrected:** the earlier rate limit crashes came from running an
+  amd64-only image under emulation on an ARM machine (it also crashed under
+  plain traffic); a multi-arch image reloaded both changes with no restart.
+
+## Tenant users and the Multi-Tenant Operator (2026-11-26)
+
+The Multi-Tenant Operator 1.11.1 (public chart), installed in the same lab,
+with a tenant `team-z`: owner `alice`, editor `bob`, viewer `carol`; and a
+second tenant `team-y`. Requests made as each user.
+
+| Check | Result |
+|---|---|
+| Owner adds its own annotation and label to its namespace | allowed; the operator kept both |
+| Editor adds an annotation to the namespace | refused (no right to change namespaces) |
+| Owner moves its namespace to `team-y`, or removes the tenant label | refused by the namespace webhook (T5) |
+| Owner creates a namespace with its own tenant's label | allowed; without the label, refused |
+| Owner or editor creates a `TemplateInstance` | **refused**: the tenant roles are Kubernetes' `admin`, `edit` and `view`, and no `TemplateInstance` role is aggregated into them (T11) |
+| The same, with a ClusterRole for `templateinstances` labelled `aggregate-to-edit` and `aggregate-to-admin` | the editor may create one in its own tenant's namespace, not in `team-y`'s; the viewer still may not |
+
+**Design change:** the bootstrap chart ships that ClusterRole (design §3.1,
+G.8). Without it no team could ask for a gateway or publish an API.
+
+The Multi-Tenant Operator also installs its own Template Operator. A cluster
+runs one: the lab's own Template Operator is for clusters without the
+Multi-Tenant Operator.
+
 ## Still to check
 
-- The same on Istio 1.27 (Service Mesh 3.3's Istio).
-- Template Operator: empty LIST, missing keys, refusing a taken name (T4,
-  T6, T7, issue #11).
-- Apply in any order with no request getting through (issue #10, AC-AUTH-7).
-- The `entry` listener with no hostname, and everything OpenShift-only (G.0:
-  R1–R5, M22, the expression descriptor in Service Mesh's proxy).
+- Everything OpenShift-only (G.0: R1–R5, M22, the expression descriptor in
+  Service Mesh's proxy, the `entry` listener behind a reencrypt `Route`).
 - A rolling restart of the rate limit service under load, with a new
-  `ConfigMap` (AC-RL-8), and the preflight under `helm template` (AC-OPS-7).
+  `ConfigMap` (AC-RL-8, G.5), and the preflight `Job` under `helm install` and
+  Argo CD (AC-OPS-7, G.6).

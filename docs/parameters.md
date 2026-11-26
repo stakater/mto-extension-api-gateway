@@ -119,7 +119,7 @@ Names of planned values are proposals. Each story fixes the names it builds.
 | `backendLock.strictMtlsTenants` | `[]` | tenants whose locked backends also get STRICT mTLS: callers outside the mesh refused, scrapers outside the mesh too (ADR-0007) | G.4 |
 | `gateway.internalDomain` | empty | the cluster router's domain for internal hosts | G.18 |
 | `gateway.internalHosts` | `{}` | **per tenant**: internal hosts, one DNS label under `gateway.internalDomain`, each with a reencrypt `Route` to the tenant's gateway (ADR-0009) | G.18 |
-| `rateLimit.service.image` | an image digest the release tested | the rate limit service, pinned by digest | G.5 |
+| `rateLimit.service.image` | a multi-arch image digest the release tested | the rate limit service, pinned by digest | G.5 |
 | `rateLimit.service.autoscaling.minReplicas`, `.maxReplicas`, `.targetCPUUtilizationPercentage` | `3`, `8`, `70` | the service's autoscaler, as today | G.5 |
 | `rateLimit.service.podDisruptionBudget.minAvailable` | `2` | below the minimum replicas, as today | G.5 |
 | `rateLimit.service.resources` | requests 200m CPU, 256Mi; limits 1 CPU, 512Mi | as today | G.5 |
