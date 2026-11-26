@@ -57,7 +57,8 @@ on one host apart, with segment prefixes, `//`, `/./`, `/../`, `%2F`, a query
 string, a path in another case, and a rewrite on the route (M16, Q16); that a
 name an existing object holds is refused by the admission policy, so Template
 Operator applies nothing, and that deleting a request never removes such an
-object (T4, T10, issue #11); that no request passes while the policies are applied in any order
+object (T4, T10, issue #11; first observed with Template Operator v0.0.8 and
+main on 2026-11-26); that no request passes while the policies are applied in any order
 (issue #10); the metrics port of the gateway and the waypoint (M23); kubelet
 probes under STRICT mTLS (M24); a change of the rate limit configuration (S1);
 `gateway-baseline.md` rows updated.

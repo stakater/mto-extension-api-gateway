@@ -53,6 +53,27 @@ Same lab, for the parts of the design that copy today's charts.
 |---|---|---|
 | T10 | A `ValidatingAdmissionPolicy` that refuses an `UPDATE` adding the label `api-gateway.stakater.com/managed` to an object without it; a ConfigMap created by hand by another field manager; then a forced server-side apply with Template Operator's field manager, the label and the same name | Refused as a dry run and for real, with the policy's message naming the object; the live object kept its data and had no new label. A new name was created, and an update of an object that already had the label was allowed. An object without the extension's label (another extension's) was still taken over: the policy doesn't affect other extensions. Template Operator itself was not in the lab; G.19 repeats this with it. |
 
+## Fourth run (2026-11-26): no takeover, with Template Operator
+
+Template Operator **v0.0.8** (the latest release) and **main** (commit
+`a07748b`, after v0.0.8), both built from source. A Template in the shape of
+the team render: a `Gateway` `mto-api-gateway`, the ConfigMaps
+`mto-api-gateway-infra` and `mto-api-gateway-status.<request>`, all with the
+extension's label, sync `strict`. The gateway class doesn't exist, so Istio
+started no pods. The same results on both versions:
+
+| Check | Result |
+|---|---|
+| Control, without the policy: a `Gateway` and a ConfigMap made by hand with those names, then a request | **Taken over:** the same UIDs, our listener merged into the `Gateway`, the ConfigMap's data replaced. **Deleting the request deleted both.** |
+| With the policy `mto-api-gateway-no-adoption` | The dry run was refused and the status named the `Gateway` (`Applied=False`, `Ready=False`). Nothing was applied, not even the new status ConfigMap. Both objects stayed unchanged, and deleting the request left them. |
+| A new namespace | Our objects were created; a Template change updated them; deleting the request deleted them. |
+| Another extension's Template, with no label of ours, over a ConfigMap made by hand | Taken over, as that extension wants: the policy doesn't affect it. |
+| A request named `orders-gateway`, next to a live `Gateway` `orders-gateway` | Ours is `mto-api-gateway`; the live `Gateway` stayed unchanged, also after the request was deleted. |
+| The preflight name check (a prototype script) | Named the two objects with reserved names made by hand; passed once they were removed. |
+
+Issue #11 is answered: the three guards of ADR-0001 hold on both versions.
+G.29 builds them into the chart.
+
 ## Still to check
 
 - The same on Istio 1.27 (Service Mesh 3.3's Istio).
