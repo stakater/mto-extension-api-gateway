@@ -209,8 +209,10 @@ gateway's service account; `exec`, `attach` and `port-forward` into gateway
 pods; the label `istio.io/dataplane-mode=none` on a pod; an `HTTPRoute` in a
 tenant namespace; a `valueFrom` parameter on an `api` or `api-gateway`
 instance (T9, ADR-0005); Template Operator and
-Istio's own writes allowed; render checks; live as a tenant editor on the kind
-lab. Satisfies **AC-ISO-6**.
+Istio's own writes allowed; a ClusterRole for `templateinstances` aggregated
+to `edit` and `admin`, so tenant editors and owners can create their requests
+and `api` instances (T11); render checks; live as a tenant editor on the kind
+lab with the Multi-Tenant Operator. Satisfies **AC-ISO-6**.
 
 **Story G.26 — An API is a `TemplateInstance`** 📝 *Draft*
 

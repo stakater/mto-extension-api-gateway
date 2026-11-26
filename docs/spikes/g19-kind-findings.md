@@ -122,6 +122,28 @@ New facts from this run, now in the design:
   amd64-only image under emulation on an ARM machine (it also crashed under
   plain traffic); a multi-arch image reloaded both changes with no restart.
 
+## Tenant users and the Multi-Tenant Operator (2026-11-26)
+
+The Multi-Tenant Operator 1.11.1 (public chart), installed in the same lab,
+with a tenant `team-z`: owner `alice`, editor `bob`, viewer `carol`; and a
+second tenant `team-y`. Requests made as each user.
+
+| Check | Result |
+|---|---|
+| Owner adds its own annotation and label to its namespace | allowed; the operator kept both |
+| Editor adds an annotation to the namespace | refused (no right to change namespaces) |
+| Owner moves its namespace to `team-y`, or removes the tenant label | refused by the namespace webhook (T5) |
+| Owner creates a namespace with its own tenant's label | allowed; without the label, refused |
+| Owner or editor creates a `TemplateInstance` | **refused**: the tenant roles are Kubernetes' `admin`, `edit` and `view`, and no `TemplateInstance` role is aggregated into them (T11) |
+| The same, with a ClusterRole for `templateinstances` labelled `aggregate-to-edit` and `aggregate-to-admin` | the editor may create one in its own tenant's namespace, not in `team-y`'s; the viewer still may not |
+
+**Design change:** the bootstrap chart ships that ClusterRole (design §3.1,
+G.8). Without it no team could ask for a gateway or publish an API.
+
+The Multi-Tenant Operator also installs its own Template Operator. A cluster
+runs one: the lab's own Template Operator is for clusters without the
+Multi-Tenant Operator.
+
 ## Still to check
 
 - Everything OpenShift-only (G.0: R1–R5, M22, the expression descriptor in
