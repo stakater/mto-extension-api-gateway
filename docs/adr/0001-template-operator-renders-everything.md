@@ -32,15 +32,15 @@ an API team instantiates once per API.
       root namespace (ADR-0004), the rate limit service, and the admission
       policy (ADR-0008).
 
-  A team's `TemplateInstance` of `api-gateway`, with no parameters, renders
+  A team's `TemplateInstance` of `api-gateway`, with no security parameter, renders
   the tenant's `Gateway`, its scaling config and its certificates in the
   team's namespace (ADR-0002). A team's `TemplateInstance` of `api` renders
   one API's `HTTPRoute` in its namespace (ADR-0005).
 - **No custom resource and no controller.** The developer contract is one
   `TemplateInstance` per tenant for the gateway (ADR-0002) and one
   `TemplateInstance` of `api` per API (ADR-0005).
-- **Templates never use sync mode `off`**, so a promoted template generation
-  or a tenant change reaches every tenant it should (T3, ADR-0015). The parent uses `revert`; `api-gateway`,
+- **Templates never use sync mode `off`**, so a version a team chooses,
+  or a tenant change, reaches every object it should (T3, ADR-0015). The parent uses `revert`; `api-gateway`,
   `api` and `api-gateway-policy` use `strict`, so a team can't edit or delete what
   it got.
 - **The extension never takes over an object that it didn't create** (issue
@@ -101,7 +101,7 @@ an API team instantiates once per API.
   (the first proposal).** Rejected as the API contract: its parameters
   re-create a values file, and an instance renders with the operator's rights
   and can read through `valueFrom`. Kept in a safer form for the gateway
-  itself: one `TemplateInstance` per tenant, with no parameters (ADR-0002).
+  itself: one `TemplateInstance` per tenant, with no security parameter (ADR-0002).
   Its goals (one chart, no switch for the token check, the API rule or the
   headers, a derived allowed-API rule, one upgrade) are kept — see
   ADR-0004..0006.

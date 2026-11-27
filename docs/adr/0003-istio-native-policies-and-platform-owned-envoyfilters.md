@@ -100,19 +100,26 @@ two services, mostly for features that are not required.
 - **Allowed-API rule:** one `AuthorizationPolicy` `ALLOW` per API, in the
   gateway's namespace, targeting the `Gateway`: `to.operation.hosts` = the API
   route's host, and `paths` = its path prefix or exact operations; conditions: `request.auth.claims[allowed_apis]` in
-  `api.<tenant>.<api>` or `api.<tenant>.<api>.*` (ADR-0006, M10), and every
-  claim mapped to a header present. **The rule checks the host and the path**
+  `api.<tenant>.<api>` or `api.<tenant>.<api>.*` (ADR-0006, M10), and `azp`
+  present (the caller the rate limit counts). Other mapped claims are
+  optional, as today (ADR-0012). **The rule checks the host and the path**
   (ADR-0005), because Istio can't attach a policy to a route; APIs on one host
   must not overlap.
 - **Claim headers:** `outputClaimToHeaders` sets `x-sub` (`azp`), `x-roles`
   (`allowed_apis`) and any team extras (ADR-0012). **EnvoyFilter 1** removes
-  the caller's copies of all of them, plus a platform list of reserved names
-  and their underscore variants, before `jwt_authn` runs.
+  the caller's copies of all of them and their underscore variants, plus the
+  names in the platform's `headers.removed` list (for example a header a team
+  stopped mapping), before `jwt_authn` runs. It never removes `authorization`,
+  `host` or another request header the gateway needs; a render check refuses
+  such a name in the list. A separate list, `headers.refusedTargets`, names
+  the headers a team may not map a claim to.
 - **Rate limit: EnvoyFilter 2.** Envoy's rate limit filter before `router`,
   and rate limit actions at the virtual-host level, with no virtual-host or
   port name to match: one entry per API, matched on the API's host and path
   (M18). Descriptors: `tenant`, `api`, `tier` and `azp`. Each API counts
-  separately, as the per-API gateways do today.
+  separately, as the per-API gateways do today. The caller is `azp`, the
+  client's ID; today's charts count by `sub`, which names the same client in a
+  client-credentials token. Counters start fresh when an API moves.
 - **The tier comes from the caller's role for the API, with exact text.** As
   today, a caller has one role per API and tier, in the allowed-APIs claim.
   Envoy's expression descriptor (`envoy.rate_limit_descriptors.expr`, CEL,

@@ -6,7 +6,7 @@ Guidance for working in this repository.
 
 **The API Gateway extension for the Multi-Tenant Operator.** It lets every
 Multi-Tenant Operator `Tenant` ask for its own API gateway on OpenShift, with
-one parameterless `TemplateInstance` in the namespace where the gateway should
+one `TemplateInstance` in the namespace where the gateway should
 run (ADR-0002): a Gateway API
 `Gateway` on OpenShift Service Mesh 3, with the platform's security baseline
 built in as Istio policies plus three platform-owned `EnvoyFilter`s — token
@@ -63,11 +63,13 @@ story-citation checks. Regenerate the golden only after an intended change:
    the path** (ADR-0005): the team never writes a route; the template checks
    the parameters, and admission refuses `valueFrom`. The per-API `ALLOW`
    names the route's host and its path (`<path>`, `<path>/*`) or exact
-   operations, requires `azp` and every mapped claim, and accepts only the
+   operations, requires `azp` (other mapped claims are optional), and accepts only the
    API's issuers. APIs on one host whose paths overlap fail closed.
-1. **Gateway settings are validated annotations, never parameters** (ADR-0012):
-   unknown or refused keys are listed; a claim header never replaces
-   `x-sub` or `x-roles`, and never maps to a reserved header.
+1. **Gateway settings are four validated parameters, never security settings**
+   (ADR-0012): `claimHeaders`, `correlationId`, `accessLog`, `traceHeaders`;
+   the child validates each value and lists refused ones; a claim header never replaces
+   `x-sub` or `x-roles`, and never maps to a name in `headers.refusedTargets`;
+   the header filter never removes `authorization` or `host`.
 1. **The allowed-API rule is derived and closed** (ADR-0006):
    `api.<tenant>.<api>`, exact or followed by `.`; never a typed pattern,
    never a wildcard. During migration the platform may map an API to its old
@@ -75,8 +77,9 @@ story-citation checks. Regenerate the golden only after an intended change:
    tier is the caller's role for the API, matched by exact text (ADR-0003),
    never by a pattern and never with Lua.
 1. **A team's request decides only where its gateway runs** (ADR-0002); the
-   gateway is always `mto-api-gateway`. The `api-gateway` Template has no parameter a team
-   can set (all `disableOverride`); the tenant comes from the parent's
+   gateway is always `mto-api-gateway`. The `api-gateway` Template's only team
+   parameters are `version` and the four settings; every other one is
+   `disableOverride`; the tenant comes from the parent's
    `tenantOf`, keyed by the request's namespace, never from the request's
    labels; one request per tenant owns the gateway; the Template syncs
    `strict`. The render tests' `trust` and `params` checks hold this.
@@ -101,9 +104,11 @@ story-citation checks. Regenerate the golden only after an intended change:
 1. **Tenants create only `TemplateInstance`s** (ADR-0005, ADR-0008):
    admission refuses their `HTTPRoute`s.
 1. **Templates never use sync mode `off`** (T3): an upgrade must reach every
-   tenant. **A published template generation never changes**: every Template
-   change goes into the next generation, a release holds at most two, and
-   object names stay the same across generations (ADR-0015).
+   tenant. **A published version never changes**: every Template
+   change goes into a new semantic version, the platform allows versions with
+   `versions.allowed`,
+   the team chooses its version on its gateway request and the platform never
+   moves a team, and object names stay the same across versions (ADR-0015).
 1. **The extension never takes over a live object** (ADR-0001, issue #11):
    every object rendered outside `mto-api-gateways` has a name that starts
    with `mto-api-` or `api.` and the label `api-gateway.stakater.com/managed`;

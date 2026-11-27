@@ -46,7 +46,7 @@ flowchart TB
     parent -->|emits| child
   end
   subgraph tenantns[team-a-dev — a tenant namespace]
-    req[TemplateInstance api-gateway<br/>the team's request, knob annotations]
+    req[TemplateInstance api-gateway<br/>the team's request, four settings]
     gwA[Gateway mto-api-gateway<br/>*.team-a.apis.example.com, ClusterIP<br/>routes from stakater.com/tenant=team-a]
     podsA[mto-api-gateway-istio pods<br/>autoscaled, gateway label]
     ra[RequestAuthentication mto-api-gateway-jwt<br/>issuer, audience, claim headers]
@@ -121,7 +121,7 @@ sequenceDiagram
   P->>M: create Tenant team-a (namespaces, mesh labels)
   M->>M: label namespaces stakater.com/tenant=team-a
   T->>T: parent adds team-a's namespaces to tenantOf
-  D->>D: create TemplateInstance api-gateway in team-a-dev (no parameters)
+  D->>D: create TemplateInstance api-gateway in team-a-dev (optional settings)
   T->>T: parent: owner of team-a = team-a-dev/api-gateway; emits team-a's child
   T->>D: Gateway mto-api-gateway + settings + status ok (strict)
   T->>D: child: RequestAuthentication, platform filters

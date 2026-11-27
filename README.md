@@ -7,7 +7,7 @@ OpenShift Service Mesh 3 — with the platform's security baseline built in:
 token check, allowed-API rule, caller headers set from the token, and rate
 limit tiers. The checks are Istio policies plus three platform-owned, tested
 `EnvoyFilter`s (ADR-0003, proposed). A team asks for its gateway
-with one `TemplateInstance` that has no parameters, and publishes each API with
+with one `TemplateInstance` (four optional, non-security parameters), and publishes each API with
 one more `TemplateInstance` that names its host, path and backend. The token
 check, the API rule and the header replacement have no switch to get wrong; a
 team can turn off only its API's rate limit and backend lock, and the platform
@@ -24,7 +24,7 @@ can stop that.
 
 | On the platform | At the gateway |
 |---|---|
-| `TemplateInstance` `api-gateway` (no parameters) in `team-a-dev` | `Gateway` `mto-api-gateway` in `team-a-dev`, serving `*.team-a.apis.example.com`, autoscaled; one per tenant |
+| `TemplateInstance` `api-gateway` (no security parameter) in `team-a-dev` | `Gateway` `mto-api-gateway` in `team-a-dev`, serving `*.team-a.apis.example.com`, autoscaled; one per tenant |
 | Every request | a valid token from one of the API's issuers; caller headers replaced from the token; the caller's rate limit tier |
 | `TemplateInstance` of `api` named `orders` in `team-a-dev`: host, path, backend `Service` and port | an `HTTPRoute` to the tenant gateway; only callers whose token names `api.team-a.orders` reach that host and path |
 | Backend Service `orders` | accepts calls from `team-a`'s gateway only (except health and metrics paths); on by default, the team can turn it off |

@@ -31,11 +31,12 @@ Fixture:
   granted the extra hostname `api.team-a.example.org` and the internal host
   `orders-team-a.apps.cluster.example.com` on the cluster router. The
   platform exempts `team-b` from the rate limit.
-- Gateway requests (`TemplateInstance`s of `api-gateway`, no parameters):
-  `api-gateway` in `team-a-dev` (team-a's gateway), with the annotations
-  `claim-headers: client_id=x-client` and `correlation-id: "on"`; `gw` in
-  `team-b-dev`, with the annotations `claim-headers: sub=authorization` (a
-  reserved header) and `replicas: "9"` (not a knob); `gw` in `team-core`; a
+- Gateway requests (`TemplateInstance`s of `api-gateway`):
+  `api-gateway` in `team-a-dev` (team-a's gateway), with the parameters
+  `claimHeaders: client_id=x-client` and `correlationId: "on"`; `gw` in
+  `team-b-dev`, with the parameters `claimHeaders: sub=authorization` (a
+  reserved header) and `accessLog: none-such` (not in the platform's list);
+  `gw` in `team-core`; every request names `version: "1.0.0"`; a
   later second request `extra` in `team-a-test`; and a request
   `stray-request` in `unlabelled`, a namespace of no tenant.
 - APIs (`api` instances with an echo backend, ADR-0005): `orders` in
@@ -102,7 +103,8 @@ Q21).
 `RequestAuthentication`, `AuthorizationPolicy` or `Telemetry` that targets
 `team-a`'s `Gateway` or selects its pods; creating a pod that uses the service
 account `mto-api-gateway-istio`; `exec`, `attach` or `port-forward` into a gateway
-pod; labelling a pod `istio.io/dataplane-mode=none`; creating an OpenShift
+pod; labelling a pod `istio.io/dataplane-mode=none`; labelling a Service or pod
+`istio.io/use-waypoint` or `istio.io/use-waypoint-namespace`; creating an OpenShift
 `Route` for a host under `apis.example.com` (OpenShift); creating an
 `HTTPRoute` in a tenant namespace; creating an `api` or `api-gateway` instance
 with a `valueFrom` parameter. Creating an `api` instance, and an
@@ -123,9 +125,9 @@ fails the check.
 **AC-ISO-9 — A request can't choose its tenant.** *(R+L)* A request in
 `team-a-test` whose own labels say `stakater.com/tenant: team-b` gets a
 listener for `team-a`'s namespaces and `*.team-a.apis.example.com`, never
-team-b's. A request can set no parameter: every parameter of `api-gateway` is
-`disableOverride`, and an instance that sets one fails
-(`OverrideNotAllowed`).
+team-b's. A request can set only its version and its four settings: every other parameter of
+`api-gateway` is `disableOverride`, and an instance that sets one, such as
+`tenantOf`, fails (`OverrideNotAllowed`).
 
 **AC-ISO-10 — A shared host is split by path between tenants.** *(R+L,
 OpenShift)* The platform grants `front.example.com` with `/orders` to
@@ -166,6 +168,14 @@ internal host is `refused`; a platform value that grants it to `team-b` too is
 refused by the parent. As `alice`, an OpenShift `Route` for that host is
 refused (G.23). Render: one reencrypt `Route` with no path per granted
 internal host, to `team-a`'s gateway Service, and the `entry` listener.
+
+**AC-ISO-14 — A namespace keeps its own waypoint.** *(R+L)* With
+`team-a-test` in `backendLock.existingWaypoints` (naming a waypoint made by
+hand), no `mto-api-gateway-waypoint` is rendered there, `payments`' lock is
+enforced by that waypoint (`intruder` gets `403`), and a namespace label that
+names no listed waypoint is reported as `outside-mesh`. When `team-a-dev`'s
+last locked API is deleted, its waypoint stays while the label names it, and
+is listed under `idle-waypoints`.
 
 **AC-EXT-1 — An API with a backend outside the cluster.** *(R+L)* The `api`
 instance `partner` sets `externalHost` to a lab host outside the mesh, with
@@ -291,7 +301,7 @@ gateway still has the rate limit filter (render), and its tenant is
 `unlimited` in the rate limit service's configuration. With
 `rateLimit.unlimitedApis: [team-a.payments]`, `shop` calling `payments` far
 past its limit never gets `429`, and still gets `429` on `orders`. No gateway
-annotation turns a limit off; only the `api` instance's `rateLimit` parameter
+parameter turns a limit off; only the `api` instance's `rateLimit` parameter
 does (AC-RL-7).
 
 **AC-RL-6 — A rate limiter outage follows the platform's choice.** *(L)* With
@@ -306,6 +316,12 @@ filter stays, `reports` has no rate limit entry, and the tenant's status lists
 it as off. With `team-a` in `rateLimit.lockedTenants`, the same parameter is
 refused with the reason in `api.reports`, and `reports` keeps its limit.
 
+**AC-RL-9 — Only gateways call the rate limit service.** *(R+L)* `intruder`
+calling the rate limit service's gRPC port is refused; `team-a`'s gateway still
+gets its limits. Render: the service's `AuthorizationPolicy` allows only
+principals ending in `/sa/mto-api-gateway-istio`, and its Service has no debug
+port.
+
 **AC-RL-8 — A change of the limits rolls the service with no failed
 request.** *(R+L)* While `shop` calls `orders` 10 times per second, the
 platform changes the `silver` rate. A new `ratelimit-config-<hash>` is
@@ -319,17 +335,23 @@ content.
 **AC-KNOB-1 — Valid settings apply.** *(R+L)* On `team-a`'s gateway, the echo
 backend reports `x-client` = `shop-app` from the token, and a correlation
 header with an id; `shop` sending `x-client: admin` still reports `shop-app`;
-`shop` sending its own correlation header gets it back unchanged. With
-`access-log` set and the platform's tracing on, the gateway's `Telemetry`
+`shop` sending its own correlation header gets it back unchanged. A token
+without `client_id` still gets `200`, with no `x-client` header, and a caller's
+own `x-client` is removed. With
+`accessLog` set and the platform's tracing on, the gateway's `Telemetry`
 samples `telemetry.tracing.samplingPercentage` of its requests (render).
 
-**AC-KNOB-2 — Invalid and unknown settings are refused and listed.** *(R+L)*
-`team-b`'s `mto-api-gateway-apis` ConfigMap lists `claim-headers` as refused
-(`authorization` is reserved) and `replicas` as an unknown key, each with the
-reason; `team-b`'s gateway serves `billing` with the defaults.
+**AC-KNOB-2 — Invalid settings are refused and listed; a misspelt name stops
+only the request.** *(R+L)* `team-b`'s `mto-api-gateway-apis` ConfigMap lists
+`claimHeaders` as refused (`authorization` is reserved) and `accessLog` as
+refused (not in the platform's list), each with the reason; `team-b`'s gateway
+serves `billing` with the defaults. Then `team-b` adds the parameter
+`replicas: "9"`: the request fails with `ParameterResolutionFailed`, nothing is
+applied or deleted, and `billing` still gets `200`; when the parameter is
+removed, the request is ready again.
 
 **AC-KNOB-3 — A setting can't touch the platform's headers.** *(R+L)* After
-any change to `team-a`'s `claim-headers`, `x-sub` and `x-roles` are still set
+any change to `team-a`'s `claimHeaders`, `x-sub` and `x-roles` are still set
 from the token and a caller's copy never reaches the backend; a mapping to
 `x-sub` is refused.
 
@@ -349,12 +371,13 @@ only from the `Authorization` header), the header-removal filter and the rate
 limit filter. Removing any of them from a template fails the check (mutation
 test).
 
-**AC-R-3 — No security knob on the gateway request.** *(R)* No team annotation
-names the issuer, the audience, the allowed-APIs claim, the tiers, the rate
-limit or the backend lock; such an annotation is listed as an unknown key and
-changes nothing in the render. The team switches are an API's own rate limit
-(AC-RL-7) and backend lock (AC-ISO-11), set on its `api` instance; no
-annotation names either.
+**AC-R-3 — No security knob on the gateway request.** *(R)* The `api-gateway`
+Template declares no team parameter that names the issuer, the audience, the
+allowed-APIs claim, the tiers, the rate limit or the backend lock: its only
+parameters without `disableOverride` are `version` (ADR-0015) and the four
+settings of ADR-0012. The
+team switches are an API's own rate limit (AC-RL-7) and backend lock
+(AC-ISO-11), set on its `api` instance; no gateway parameter names either.
 
 **AC-R-4 — Allowed-API rules are derived and closed.** *(R)* Every per-API
 condition is exactly `api.<tenant>.<api>` and `api.<tenant>.<api>.*`, plus,
@@ -372,7 +395,7 @@ a hostname, or with `entry` for a tenant with neither, fails.
 
 **AC-R-6 — Per-API rules are scoped to their API's host and path.** *(R)*
 Every per-API `ALLOW` names only its route's host, and its path as `<path>`
-and `<path>/*` or its exact operations, requires `azp` and every mapped claim,
+and `<path>/*` or its exact operations, requires `azp` (and no other mapped claim),
 and accepts only its API's issuers; no per-API `ALLOW` has no hosts, and
 only an API on `/` has no paths. A fixture that drops the hosts, the paths or
 the `azp` condition fails.
@@ -385,7 +408,7 @@ the `azp` condition fails.
 
 **AC-LIFE-1 — A team's request gets the tenant's gateway.** *(R+L)* A new
 tenant `team-c` has no gateway until its team creates a `TemplateInstance` of
-`api-gateway`, with no parameters, in `team-c-dev`. Then `team-c-dev` has a
+`api-gateway`, with only `version` set, in `team-c-dev`. Then `team-c-dev` has a
 `Gateway` `mto-api-gateway` with `Programmed=True`, its autoscaler,
 `mto-api-gateway-status.<request>` saying `ok`, and the tenant's child renders the gateway's
 policies, with no other step.
@@ -442,19 +465,20 @@ domain, and two tenants' overlapping extra hostnames.
 **AC-OPS-3 — Upgrades keep the contract.** *(L)* The whole suite is green
 before and after a Service Mesh (Istio) minor upgrade, with no chart change.
 
-**AC-OPS-4 — A chart release changes nothing until the platform promotes.**
-*(L)* Installing a release with `[g1 g2]` and `rollout.default: g1` changes no
-tenant's objects. Setting `rollout.default: g2` re-renders every tenant's
-gateway and child within one sync, and the suite stays green.
+**AC-OPS-4 — An install changes no tenant.** *(L)* Installing a release that
+adds `1.1.0` changes no tenant's objects: each tenant keeps the version its
+request names. The parts that are not per tenant update with a rolling
+restart, and the suite stays green on every version the release ships.
 
-**AC-OPS-5 — A new generation reaches a canary first.** *(R+L)* With
-`rollout.canary.apis: [team-a.orders]`, only `orders`' route, rule, lock and
-rate limit entry come from g2; `payments` and `team-b` stay on g1. With
-`rollout.canary.tenants: [team-b]`, all of `team-b`'s objects come from g2.
-Removing the entry moves them back to g1. A values file that names a
-generation the release doesn't contain is refused by the schema, and the
-error names it. A client calling `orders` once per second through every
-change sees no `5xx` and no `403`.
+**AC-OPS-5 — A team moves when it chooses.** *(R+L)* `team-a` sets
+`version: "1.1.0"`: only `team-a`'s gateway, child and API objects re-render
+from `1.1.0`; `team-b` stays on `1.0.0`. Setting the version back moves
+`team-a` back. A gateway request with no `version`, or with a version not in
+`versions.allowed`, is refused by admission, and nothing changes. An install,
+or a change of `versions.allowed`, that removes a version a request still
+names is refused, and the error names the tenant. `mto-api-gateway-versions` lists each tenant's version. A
+client calling `orders` once per second through every change sees no `5xx`
+and no `403`.
 
 **AC-OPS-6 — Restarts and mesh moves drop no request.** *(L)* Under a steady
 load: a rolling restart of a tenant gateway and of a waypoint, and a move of

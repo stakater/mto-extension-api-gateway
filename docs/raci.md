@@ -34,7 +34,7 @@ What that costs — the failure modes this extension removes (`vision.md`):
 ## With the extension (one tenant gateway, `api` instances)
 
 The gateway becomes a platform-defined, per-tenant `Gateway`: a team requests
-it with one parameterless `TemplateInstance`, and Template Operator renders it
+it with one `TemplateInstance`, and Template Operator renders it
 in the team's namespace (ADR-0002). An API team publishes an API with a
 `TemplateInstance` of `api`, which renders its `HTTPRoute` (ADR-0005). The security baseline is
 platform-rendered Istio policy plus three platform-owned, tested `EnvoyFilter`s
@@ -52,11 +52,12 @@ mesh labels come from the `Tenant`.
 | Identity provider realm, clients, `api.<tenant>.<api>.<tier>` roles | R, A | C | same (automated from the route later, G.11) |
 | `Tenant`: namespaces and mesh labels | R, A | C | same |
 | **The gateway charts and the Template** | R, A | I | **moves to platform** (each team copied the chart today) |
-| **Request the tenant's gateway** (one parameterless `TemplateInstance`) | A | R | **new** — one request per tenant; the platform decides how the gateway runs (ADR-0002) |
-| **Tune the gateway's team settings** (claim headers, correlation ID, access log, trace headers: annotations on the request) | C | R, A | **changed** — validated annotations instead of a values file (ADR-0012) |
+| **Request the tenant's gateway** (one `TemplateInstance`) | A | R | **new** — one request per tenant; the platform decides how the gateway runs (ADR-0002) |
+| **Tune the gateway's team settings** (claim headers, correlation ID, access log, trace headers: parameters of the request) | C | R, A | **changed** — four validated parameters instead of a values file (ADR-0012) |
 | **The per-tenant gateway and its security baseline** (token check, allowed-API rule, header handling, rate limit, deny-by-default) | R, A | I | **moves to platform** (switches in each team's values today) |
-| **Autoscaling the gateway** (HPA, PDB) | R, A | I | **new** — fixed replica counts per API today (ADR-0002) |
-| **Upgrading every gateway** | R, A | I | **moves to platform** (each team, by hand, today) |
+| **Autoscaling the gateway** (HPA, PDB) | R, A | I | moved to the platform: today each API's chart has its own autoscaler (3 to 5 pods), set by the team (ADR-0002) |
+| **Releasing and installing a new version** | R, A | I | **moves to platform** (each team, by hand, today) |
+| **Moving the tenant to a new version** (`version` on the request) | I | R, A | **changed** — one line per cluster, when the team is ready, test cluster first (ADR-0015) |
 | Publish an API (a `TemplateInstance` of `api`) | C | R, A | **changed** — a copied values file becomes one `TemplateInstance` with checked parameters (ADR-0005) |
 | Change an API (host, path, backend, route rules) | I | R, A | same |
 | Deploy and run the application | I | R, A | same |
@@ -67,7 +68,7 @@ mesh labels come from the `Tenant`.
 ## What moves, and what stays
 
 - **Moves to the platform:** the gateway chart, its security baseline, the
-  gateway's lifecycle and autoscaling, and all upgrades — exactly the things an
+  gateway's lifecycle and autoscaling, and every release and install — exactly the things an
   API team gets wrong or lets drift today.
 - **Stays with the API team:** a team still **publishes, changes and
   troubleshoots its own APIs** — now with one `api` `TemplateInstance`, not a

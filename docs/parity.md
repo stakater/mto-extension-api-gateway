@@ -60,10 +60,10 @@ part of the extension: it stays with the platform, unchanged.
 | Audience check | per issuer (`audiences`) | ✅ |
 | istiod fetches the keys | the same; reload every 3 minutes (M19) | ✅ |
 | `realmRevision` restarts the gateway pods after a realm import | replaced by the 3-minute reload; a stable signing key is G.27 | 🔄 |
-| No token or wrong API: `403`; bad token: `401` | the same; a token of an issuer the gateway doesn't trust: `401` (observed) | ✅ |
+| No token or wrong API: `403`; bad token: `401`; another issuer's token: `403`; an unknown path: `404` | the same for the first two; another issuer's token `401` and an unknown path `403` (design §4); callers and e2e checks updated at the move | 🔄 |
 | Token also accepted in the `access_token` query parameter | refused: `Authorization` header only (M15); checked before a move | 🔄 |
 | The token is not forwarded to the backend | the same | ✅ |
-| Authentication can be turned off entirely | not possible (ADR-0004) | ❌ |
+| Authentication can be turned off entirely (one test gateway runs so) | not possible (ADR-0004); such an API stays on its old gateway; a platform exemption per API is a later option (design §12) | ❌ |
 | Legacy mode: an issuer with keys written in, access by a list of client IDs | not supported; the issuer is being retired (ADR-0004) | ❌ |
 
 ## 5. Authorization and headers
@@ -73,7 +73,7 @@ part of the extension: it stays with the platform, unchanged.
 | Allow only tokens whose `allowed_apis` matches a typed pattern | a derived, closed rule `api.<tenant>.<api>`, plus today's role names as exact values during migration (ADR-0006) | ➕ |
 | Authorization bound to the API's hosts | bound to host **and** path (ADR-0005); path tricks refused (observed) | ➕ |
 | `x-sub` from `azp`, `x-roles` from `allowed_apis` | the same, always | ✅ |
-| A team's own claim headers | `claim-headers` knob (ADR-0012) | ✅ |
+| A team's own claim headers | `claimHeaders` parameter (ADR-0012) | ✅ |
 | Caller copies of claim headers removed before the token check | the same: the platform's header filter (ADR-0003) | ✅ |
 | Other caller headers pass through to the backend | the same | ✅ |
 
@@ -81,9 +81,9 @@ part of the extension: it stays with the platform, unchanged.
 
 | Feature today | This extension | Status |
 |---|---|---|
-| Add the correlation header from `x-request-id` when absent | `correlation-id` knob; the header name is a platform value | ✅ |
-| Per-gateway access log provider | `access-log` knob, from the platform's list | ✅ |
-| Extra trace tags from headers | `trace-headers` knob | ✅ |
+| Add the correlation header from `x-request-id` when absent | `correlationId` parameter; the header name is a platform value | ✅ |
+| Per-gateway access log provider | `accessLog` parameter, from the platform's list | ✅ |
+| Trace tags: the correlation header and every claim header automatically, plus extra headers | the same: automatic tags, plus the `traceHeaders` parameter (ADR-0012) | ✅ |
 | 100 % trace sampling on each gateway | `telemetry.tracing.samplingPercentage`, default 100, in each gateway's `Telemetry` (ADR-0012) | ✅ |
 | Access log formats and the tracing provider in the mesh configuration | unchanged | ➖ |
 
@@ -94,7 +94,7 @@ part of the extension: it stays with the platform, unchanged.
 | Rate limit on or off per API, by the team | `rateLimit: "off"`; the platform can lock a tenant (ADR-0004) | ✅ |
 | Tier from the caller's role, Lua code, highest tier wins, default bronze | the same rules, by exact text with no Lua (CEL expression, observed on kind, M20) | ➕ |
 | Hyphenated API names put every caller on bronze (bug) | fixed: callers get their real tier (checked before a move) | 🔄 |
-| Counter per tier, API and caller | the same (per tenant, API, tier and `azp`) (observed) | ✅ |
+| Counter per tier, API and caller (`sub`) | per tenant, API, tier and `azp`, the client's ID; counters start fresh at the move (ADR-0003) | 🔄 |
 | Rate limiter down: requests pass (fail open), 0.25 s timeout | a platform value; fail open observed | ✅ |
 | `429` without `X-RateLimit-*` headers | the same | ✅ |
 | Shared rate limit service (`envoyproxy/ratelimit`), tiers and rates | deployed by the bootstrap chart from platform values | ✅ |
@@ -120,8 +120,8 @@ part of the extension: it stays with the platform, unchanged.
 | The chart refuses auth without a lock choice | the lock is on unless the team turns it off | ✅ |
 | STRICT mTLS on backend pods (optional, unused) | per tenant, by the platform (`backendLock.strictMtlsTenants`), off by default: callers outside the mesh refused, kubelet probes pass, scrapers outside the mesh refused (observed, ADR-0007) | 🔄 |
 | Calls to a pod's IP, and from outside the mesh, bypass the waypoint | the same (observed: M21, Q21); STRICT closes the path from outside the mesh for a tenant | ✅ |
-| Waypoint autoscaling and disruption budget | platform values (ADR-0007) | ✅ |
-| A waypoint shared from another namespace | one waypoint per backend namespace | 🔄 |
+| Waypoint autoscaling (3 to 5 at 80 %) and disruption budget (1) | the same defaults, platform values (ADR-0007) | ✅ |
+| A namespace that reuses a waypoint (`create: false`), also one in another namespace | `backendLock.existingWaypoints`: the extension renders none there (ADR-0007) | ✅ |
 
 ## 10. Scaling and monitoring
 
@@ -151,7 +151,7 @@ part of the extension: it stays with the platform, unchanged.
 
 | Feature today | This extension | Status |
 |---|---|---|
-| A runner per API: real token, `403` anonymous, `200` authenticated, `429` under load | unchanged; it must target the new gateway after a move (docs/migration.md) | ➖ |
+| A runner per API: real token, `403` anonymous, `200` authenticated, `429` under load | unchanged; pointed at the tenant gateway in migration step 3.e, with a longer burst for a client whose tier rises | ➖ |
 | Checks for the lock, header stripping, tiers and correlation ID | the extension's acceptance suite (docs/acceptance.md) | ➕ |
 
 ## 14. Mesh installation

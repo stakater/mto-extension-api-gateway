@@ -52,9 +52,10 @@ such as namespaces (T11, observed on kind with the Multi-Tenant Operator
 - **Tenant users get the right to create `TemplateInstance`s** through a
   ClusterRole of the bootstrap chart, labelled `aggregate-to-edit` and
   `aggregate-to-admin`. Without it, no tenant user may create one (T11).
-- **The request has no parameters:** every parameter of
-  `api-gateway` is a `disableOverride` default. A team tunes a few
-  non-security settings with validated annotations on the request (ADR-0012).
+- **The request has no security parameter:** a team sets the required
+  `version` (ADR-0015) and may set four optional, non-security settings,
+  validated by the child (ADR-0012); every other parameter of `api-gateway`
+  is a `disableOverride` default.
 - **The request renders the gateway, not its policy:** the `Gateway`, its
   scaling ConfigMap, its certificates and a status ConfigMap. The tenant's
   child `TemplateInstance` renders the gateway's policies (ADR-0013).

@@ -101,7 +101,10 @@ share an internal host by path, as any host (ADR-0005).
   granted hosts and paths reach the gateway), and the API rule (host and
   path, ADR-0005). This holds because tenants can't write routes (ADR-0008).
 - The router matches a path as a string prefix, longest first (R1): a
-  request for `/ordersx` reaches `team-a`'s gateway and gets `404` there.
+  request for `/ordersx` reaches `team-a`'s gateway and gets `403` there: no
+  API rule matches, so the default deny refuses it before routing. Today's
+  gateways answer `404` for such a path; the change is in the migration
+  runbook's list of caller-visible changes.
 - `InterNamespaceAllowed` applies to the whole router, so admission is the
   guard for every shared host and the base domain (G.8, G.23).
 - Host names under the base domain still show who owns an API; a shared host

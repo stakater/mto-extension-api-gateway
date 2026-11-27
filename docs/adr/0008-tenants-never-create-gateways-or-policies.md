@@ -19,7 +19,7 @@ overrides: an extra `ALLOW` policy adds access, and an extra
 - **Only the platform and Template Operator create** `Gateway`s, the
   gateway's `RequestAuthentication` and `AuthorizationPolicy` objects, its
   `EnvoyFilter`s, the backend locks for this extension, and the `HTTPRoute`s
-  of APIs. Tenants create only `TemplateInstance`s: one parameterless
+  of APIs. Tenants create only `TemplateInstance`s: one
   `api-gateway` for the gateway (ADR-0002) and one `api` per API
   (ADR-0005). Template Operator renders both in strict mode, so the tenant
   can't edit or delete what they render.
@@ -34,10 +34,16 @@ overrides: an extra `ALLOW` policy adds access, and an extra
        gateway's service account; `exec`, `attach` and `port-forward` into a
        gateway's pods; an `HTTPRoute` in a tenant namespace (ADR-0005); a
        `valueFrom` parameter on an `api` or `api-gateway` instance (T9); the label
-       `istio.io/dataplane-mode` on a tenant pod (M8); and a tenant's OpenShift
-       `Route` for a host under the base domain or for a shared host (ADR-0009). The policy matches requests
-       from tenant users only. It lets through Template Operator, which renders
-       the gateway and its policies in the tenant's namespace (ADR-0002).
+       `istio.io/dataplane-mode` on a tenant pod (M8); the labels
+       `istio.io/use-waypoint` and `istio.io/use-waypoint-namespace` on a
+       tenant's Service or pod, which would skip the backend lock (ADR-0007);
+       and a tenant's OpenShift `Route` for a host under the base domain, for a
+       shared host or for a granted internal host (ADR-0009). The policy
+       matches requests from tenant users only. It lets through Template
+       Operator, which renders the gateway and its policies in the tenant's
+       namespace (ADR-0002), and Argo CD and other platform service accounts:
+       today's per-API releases, which Argo CD syncs, keep their `Route`s while
+       an API moves, so the move can be undone (docs/migration.md).
        When the Service Mesh extension is
        installed, its policies cover the shared kinds and this extension adds
        only its own.

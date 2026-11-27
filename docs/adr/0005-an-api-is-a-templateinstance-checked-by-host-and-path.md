@@ -63,7 +63,7 @@ spec:
 
 | Parameter | Required | Default | Checks |
 |---|---|---|---|
-| `host` | no | `<api>.<tenant>.<base domain>` | a lowercase host name, no wildcard; one of the tenant's hostnames, or a shared host when `path` is under one of the tenant's prefixes there (ADR-0009) |
+| `host` | no | `<api>.<tenant>.<base domain>` | a lowercase host name, no wildcard; one of the tenant's hostnames, or a shared host when `path` is under one of the tenant's prefixes there (ADR-0009); `"-"` for no public host, which needs `internalHost` (an API that today has only an internal host) |
 | `path` | yes | — | starts with `/`; segments of letters, digits, `-`, `.`, `_`, `~`; no empty, `.` or `..` segment; no trailing `/`, except `/` alone |
 | `rewrite` | no | no rewrite | as `path`; not with `operations` |
 | `service` | yes, unless `externalHost` | — | a DNS label: a `Service` in the instance's namespace |
@@ -154,7 +154,7 @@ rules:
   ask only with `TemplateInstance`s, and used four route fields. A free route
   can match by regular expression, header or query parameter, which an
   Istio path rule can't express; the child would have to refuse those routes.
-- **Annotations on the `api` instance, not parameters (as ADR-0012).**
+- **Annotations on the `api` instance, not parameters.**
   Rejected: an instance's own render can't read its annotations (T6), so the
   child would also have to render every route. Parameters keep the route with
   the team's instance; admission removes `valueFrom`.
