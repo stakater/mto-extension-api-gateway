@@ -36,6 +36,13 @@ claim matches any value of a list claim, exactly or by prefix (M10).
   mapped to APIs of two tenants, or one that is the start of another mapped
   old name. A team can't set it. Renaming the roles in the identity provider
   later removes the mapping.
+- **A new API may use the old form too.** Until the customer's realm chart can
+  create `api.<tenant>.<api>.<tier>` roles (it creates only
+  `api-<api>-consumer-<tier>` today, and refuses others), the platform maps a
+  new API to an old-form name in the same way, so the API needs no change in
+  the realm chart. G.11 removes the need. An old role with a tier the platform
+  doesn't define (today's pattern accepted any tier) is refused: such callers
+  get a defined tier role first (docs/migration.md, step 3.c).
 
 ## Consequences
 

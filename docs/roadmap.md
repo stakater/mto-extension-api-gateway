@@ -206,7 +206,9 @@ tenant users only, refusing: a `Gateway`, `EnvoyFilter`, `WasmPlugin` or
 `TrafficExtension`; a `RequestAuthentication`, `AuthorizationPolicy` or
 `Telemetry` that targets a `Gateway` or selects gateway pods; a pod using a
 gateway's service account; `exec`, `attach` and `port-forward` into gateway
-pods; the label `istio.io/dataplane-mode=none` on a pod; an `HTTPRoute` in a
+pods; the label `istio.io/dataplane-mode=none` on a pod; the labels
+`istio.io/use-waypoint` and `istio.io/use-waypoint-namespace` on a tenant's
+Service or pod; an `HTTPRoute` in a
 tenant namespace; a `valueFrom` parameter on an `api` or `api-gateway`
 instance (T9, ADR-0005); Template Operator and
 Istio's own writes allowed; a ClusterRole for `templateinstances` aggregated
@@ -223,6 +225,7 @@ platform can check every route it serves.
 Done: the parent publishes the `api` Template (tenant namespaces only, platform
 parameters `disableOverride`, `strict`); an instance renders the `HTTPRoute`
 `api.<api>` (prefix or exact operations, rewrite, backend in its namespace,
+`host: "-"` for an API with only an internal host,
 the annotation) and the ConfigMap `api.<api>`; each check of ADR-0005 has a
 render test, and an invalid parameter or a tenant with no gateway renders
 `refused` and no route; live: `orders` and `payments` attach to `team-a`'s
@@ -253,11 +256,14 @@ gateway's (ADR-0007); the team's `backendLock: "off"` and
 `ExternalName`, a namespace outside the mesh or without a waypoint label)
 gets no API rule and is listed; `backendLock.strictMtlsTenants`: a STRICT
 `PeerAuthentication` on the pods of each locked Service of those tenants
-(ADR-0007); live: `intruder` refused through the Service,
+(ADR-0007); `backendLock.existingWaypoints` (no waypoint of ours where a
+namespace keeps its own, also one in another namespace); the waypoint kept
+while the namespace's label names it; the label's value checked; the
+statuses `lock-bypass` and `idle-waypoints`; live: `intruder` refused through the Service,
 also after an extra `ALLOW`; the open paths, probes and monitoring work; the
 gateway allowed; calls to a pod's IP recorded (Q21); with STRICT, `outsider`
 refused and probes passing. Satisfies **AC-ISO-5**,
-**AC-ISO-7**, **AC-ISO-11**, **AC-ISO-12**.
+**AC-ISO-7**, **AC-ISO-11**, **AC-ISO-12**, **AC-ISO-14**.
 
 **Story G.16 — Backends outside the cluster** 📝 *Draft*
 
@@ -299,7 +305,12 @@ configuration from bootstrap values, with today's values as defaults
 (autoscaler, disruption budget, spread, resources, probes, the image by digest;
 Redis as one server or Sentinel, its address and Secret as values); the
 configuration `ConfigMap` named by a hash of its content, and the image
-pinned by the digest of a multi-arch image (S1); the
+pinned by the digest of a multi-arch image (S1); the ServiceAccount
+`ratelimit`, `appProtocol: grpc`, no debug port on the Service, and an
+`AuthorizationPolicy` that lets only tenant gateways call it; one replica
+allowed on a small cluster, with no disruption budget then; a Redis password
+change restarts it (`rateLimit.redis.passwordRevision`); fail open by
+default; the
 child renders the rate limit `EnvoyFilter` (one entry per API, matched on
 its host and path; descriptors `tenant`, `api`, `tier` from the caller's
 role for the API by exact text, the lowest when none (ADR-0003, M20), `azp`); the team's `rateLimit` switch per API, `lockedTenants`, `unlimited`
@@ -308,7 +319,7 @@ tier at `bronze`, an exempt tenant and an exempt API unlimited; a change of
 the tiers rolls the service one pod at a time, under load, with no failed
 request. Satisfies **AC-RL-1**,
 **AC-RL-2**, **AC-RL-3**, **AC-RL-4**, **AC-RL-5**, **AC-RL-6**, **AC-RL-7**,
-**AC-RL-8**.
+**AC-RL-8**, **AC-RL-9**.
 
 **Story G.25 — Team settings on the gateway request** 📝 *Draft*
 
@@ -316,11 +327,15 @@ As an API team, I want to set my backend's claim headers, a correlation ID and
 my access logs and traces myself, so that I don't wait for the platform team
 for settings that can't weaken security.
 
-Done: the child reads the owner request's `api-gateway.stakater.com/*`
-annotations (ADR-0012), validates them, renders the claim-header extras, the
+Done: the `api-gateway` Template declares the four optional parameters
+`claimHeaders`, `correlationId`, `accessLog` and `traceHeaders`; the child
+reads them from the owner request (ADR-0012), validates each value, renders the claim-header extras, the
 correlation-ID `EnvoyFilter` and the `Telemetry` (with the platform's trace
-sampling rate, default 100 %); refused and unknown keys
-listed with the reason; live: a mapped header set from the token and the
+sampling rate, default 100 %, and trace tags for the correlation header and
+every claim header, as today); mapped claims optional, only `azp` required;
+the header filter's two lists, `headers.refusedTargets` and `headers.removed`,
+with a render check that it never removes `authorization` or `host`; refused
+values listed with the reason, and a misspelt name failing only the request; live: a mapped header set from the token and the
 caller's copy removed, the correlation header added when absent and kept when
 sent. Satisfies **AC-KNOB-1**, **AC-KNOB-2**, **AC-KNOB-3**, **AC-R-3**.
 
@@ -363,7 +378,8 @@ Satisfies **AC-ISO-6** (shared list).
 **Story G.9 — Migration from per-API gateways** 📝 *Draft* — the per-API
 gateways serve production, so the runbook in
 [`migration.md`](migration.md) and a lab rehearsal that move one API at a
-time, on the test cluster first, with no change for callers: today's tokens
+time (several old gateways on one backend Service, today's Redis allowing the
+new rate limit service, existing waypoints kept), on the test cluster first, with no change for callers: today's tokens
 work through the platform's old-role mapping (ADR-0006); the headers each
 backend reads compared through both gateways; a values file turned into an
 `api` instance on the same shared host and path; an internal host granted to
@@ -379,14 +395,16 @@ a rollback to the previous chart version on a cluster that serves traffic;
 both runs kept as evidence, and the tested versions written into
 [`support-matrix.md`](support-matrix.md) (#7). Satisfies **AC-OPS-1**, **AC-OPS-3**, **AC-OPS-4**.
 
-**Story G.28 — Staged upgrades** 📝 *Draft* — template generations (at most
-two per release), `rollout.default` and `rollout.canary` (tenants and APIs),
-a values schema that allows only the release's generations, the parent and
-the team-facing Templates rendering by generation, promote and roll back
-with values, and `gateway.meshRevision` for a mesh upgrade one tenant at a
-time; live: a canary API and a canary tenant on g2, promote, roll back, and
-the next release refused while g1 is named; no dropped requests (ADR-0015,
-issue #8). Satisfies **AC-OPS-4**, **AC-OPS-5**, **AC-OPS-6**.
+**Story G.28 — Teams choose their version** 📝 *Draft* — semantic versions;
+the gateway request's required `version`; the parent, the child and the `api`
+Template rendering each tenant's version; `versions.allowed`, by default
+every version the release ships; admission refuses a missing or unallowed
+version; the live preflight refuses an install or a `versions.allowed` change
+that removes a version in use, and names the tenant;
+`mto-api-gateway-versions`; `gateway.meshRevision` for a mesh upgrade one
+tenant at a time; live: an install changes no tenant, a team moves and moves
+back, an install that drops a version in use is refused; no dropped requests
+(ADR-0015, issue #8). Satisfies **AC-OPS-4**, **AC-OPS-5**, **AC-OPS-6**.
 
 ---
 
@@ -427,6 +445,15 @@ customer's realm chart already has a pinned-key option, switched off), key
 rotation by overlap (the new key first, the old key published until its
 tokens expire), and a live check that a realm import refuses no token. Until
 then, the mesh reloads keys every 3 minutes (M19, design §12).
+
+**Story G.30 — Self-service issuers** 📝 *Draft* — a team trusts its own
+Keycloak without a platform change: the platform lists, per tenant, the issuer
+URL prefixes it allows, and the token floor lists them; the team names an
+issuer under one of them on its own request; only that tenant's token check
+and API rules trust it; Istio fetches keys only from allowed addresses; live:
+another tenant's gateway refuses those tokens, a URL outside the allowlist is
+refused with the reason. Decided in its own ADR first (ADR-0004,
+Alternatives).
 
 **Story G.14 — Observability per tenant** 📝 *Draft* — gateway access logs in
 the platform's JSON format, traces and metrics labelled with the tenant and the

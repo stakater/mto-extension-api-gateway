@@ -5,7 +5,8 @@
   policies instead of Kuadrant overrides; amended the same day after an
   independent design review; on 2026-11-19, issuers per tenant and per API,
   and the rate limit exemption per API; the same day, the team's rate limit
-  switch per API)
+  switch per API; on 2026-11-26, self-service issuers recorded as the
+  direction, G.30)
 
 ## Context
 
@@ -37,8 +38,8 @@ allowed-API claim of another tenant's API.
        only from the `Authorization` header.
     1. **Allowed-API rule per API:** an `ALLOW` scoped to the API route's
        host and path (ADR-0005), accepting only the API's issuers, with the
-       closed claim condition of ADR-0006 and every mapped claim (`azp` at
-       least) required (M10).
+       closed claim condition of ADR-0006 and `azp` required (M10); other
+       mapped claims are optional (ADR-0012).
     1. **Claim headers:** `x-sub` and `x-roles` set from the token, after the
        platform-owned header filter removed any copy the caller sent
        (ADR-0003).
@@ -47,7 +48,9 @@ allowed-API claim of another tenant's API.
 - `DENY` wins over `ALLOW` in Istio, so no `ALLOW` policy, from any source,
   can let in a request without a valid token from a trusted issuer.
 - **Issuers are registered by the platform: one, many, one per tenant, or
-  one per API.**
+  one per API.** In v1 only the platform adds an issuer; a team with its own
+  Keycloak asks once per Keycloak. Self-service within a platform allowlist
+  is the direction for later (G.30, Alternatives).
 
 ```yaml
 auth:
@@ -139,6 +142,9 @@ APIs.
   again), its tokens are refused for a few minutes until the keys are
   reloaded and callers get new tokens. Stable signing keys remove this; that
   is a later enhancement (G.27).
+- A team that runs its own Keycloak waits for one platform change per
+  Keycloak, not per API. When many teams do, self-service (G.30) removes that
+  wait.
 - Every issuer must issue the same claims: `azp`, and the allowed-APIs claim
   with the caller's roles, one per API and tier (ADR-0003, ADR-0006).
 - The guarantee depends on admission (ADR-0008) more than the Kuadrant form
@@ -152,6 +158,15 @@ APIs.
   tokens carry no roles). Not supported: the customer is retiring that issuer.
   An API that still accepts such tokens stays on its old gateway until its
   callers use the identity provider's tokens (docs/migration.md).
+
+- **Self-service issuers, within a platform allowlist.** Not in v1; the
+  direction for later (G.30, decided in its own ADR then, because a team would
+  name a security setting). The safe shape: the platform lists, per tenant,
+  the issuer URL prefixes it allows (`https://kc.team-b.example.com/`), and
+  the token floor lists those prefixes; a team names an issuer under one of
+  them on its own request, and only its tenant's token check and API rules
+  trust it. Istio fetches keys only from allowed addresses, and another
+  tenant's gateway still refuses those tokens (Q18).
 
 - **Kuadrant gateway-level `overrides` (`strategy: merge`) and a listener-level
   `defaults` deny (the first version of this ADR).** Not chosen with

@@ -29,7 +29,7 @@ gateway layer doesn't use that knowledge.
 > ask for its own gateway, with the platform's security baseline built in. The
 > token check, the API rule and the header handling can't be switched off;
 > only an API's own rate limit and backend lock can, and the platform can stop
-> that. The team asks once, with one parameterless
+> that. The team asks once, with one
 > `TemplateInstance`, and publishes each API with one more `TemplateInstance`
 > that names its host, path and backend. Token check and allowed-API check come from supported Istio
 > policies; header handling and rate limits from a few platform-owned, tested
@@ -43,7 +43,7 @@ platform-owned filters, rendered per tenant by Template Operator.
 
 | Persona | Job to be done | What they get |
 |---|---|---|
-| **Platform team** | run API gateways safely for many teams, and upgrade them without a project per team | one chart for all tenants; one version bump upgrades every gateway; a token check, API rule and header handling that no tenant can switch off |
+| **Platform team** | run API gateways safely for many teams, and upgrade them without a project per team | one chart for all tenants; one install brings each new version, and each team moves when it is ready; a token check, API rule and header handling that no tenant can switch off |
 | **API team** | publish an API without learning the gateway design | one `TemplateInstance` per API, with checked parameters; first-line troubleshooting with the familiar `401`, `403`, `429` |
 | **Security and audit** | prove that every API checks the token and the caller's rights | the checks live in platform-owned policies that a route can't weaken; render checks fail on any wildcard or missing check |
 | **Red Hat platform owners** | stay on supported products through upgrades | Gateway API and Service Mesh 3 as designed; only three platform-owned `EnvoyFilter`s, tested on every Service Mesh upgrade, and the support caveat stated up front |
@@ -63,8 +63,8 @@ platform-owned filters, rendered per tenant by Template Operator.
   acceptance suite runs on every Service Mesh minor upgrade.
 - **Fewer idle pods.** One gateway per tenant, scaled by load, instead of one
   per API at a fixed size.
-- **One upgrade for all.** The platform bumps one chart; Template Operator
-  renders every tenant again.
+- **One upgrade path for all.** The platform installs one chart; each team
+  moves its tenant with one line, test cluster first.
 
 ## Principles
 

@@ -36,6 +36,10 @@ passes.
 1. **Mesh upgrades come after the suite.** Before the platform moves to a new
    Service Mesh minor, the upgrade suite runs on it (G.10) and adds it here.
    The platform upgrades the mesh only to a version on this page.
+1. **The mesh is pinned too.** Service Mesh upgrades need a `Manual` install
+   plan approval or a pinned version, so the mesh never moves past a minor
+   this extension was tested on; the preflight refuses a newer minor than the
+   highest tested one.
 1. **Template Operator is pinned.** Its API is alpha (`v2alpha1`), so each
    release names the exact Template Operator version it was tested with, and
    a new Template Operator version is supported only after the suite.

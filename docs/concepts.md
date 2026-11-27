@@ -10,7 +10,7 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 | Term | Where it lives | What it is |
 |---|---|---|
 | **Tenant** | Multi-Tenant Operator | The unit of ownership: a team and its namespaces. Every tenant namespace carries the label `stakater.com/tenant=<tenant>`. |
-| **Gateway request** | a `TemplateInstance` of the `api-gateway` Template, in a tenant namespace | How a team asks for its tenant's gateway: `api-gateway` in `team-a-dev`. It has no parameters. A tenant has one gateway: the oldest request wins, and every other request gets a status that says why. |
+| **Gateway request** | a `TemplateInstance` of the `api-gateway` Template, in a tenant namespace | How a team asks for its tenant's gateway: `api-gateway` in `team-a-dev`. Its parameters are the required `version` and four optional team settings. A tenant has one gateway: the oldest request wins, and every other request gets a status that says why. |
 | **Tenant gateway** | Gateway API `Gateway`, in the request's namespace | The tenant's one Envoy gateway, always named `mto-api-gateway`, in the request's namespace (`team-a-dev`). Service Mesh deploys its pods there (`mto-api-gateway-istio`). Only routes from the tenant's own namespaces attach to it. The team can't edit or delete it. |
 | **Platform namespace** | Kubernetes | `mto-api-gateways`: the bootstrap chart, its parent, and the `api-gateway` and `api` Templates that teams instantiate. Tenants have no access to it. |
 | **Tenant hostnames** | the tenant gateway's listener | The host names the tenant gateway serves: `*.team-a.apis.example.com` by default, plus any extra names the platform grants, plus path prefixes the platform grants on a shared host such as `front.example.com` (ADR-0009). An API can use no other host or prefix. |
@@ -25,7 +25,8 @@ caller **`shop`** (an RHBK client allowed to use `orders`, tier `silver`).
 | **Template Operator** | Stakater | Renders the team's gateway request, each `api` instance, and one policy child per tenant. |
 | **Bootstrap chart** | this repo | Installed once per cluster. Publishes the `api-gateway` and `api` Templates, renders the token floor, the default deny, the rate limit service and the admission policy, and fans out one policy child per tenant. |
 | **Policy child** | a `TemplateInstance` per tenant, in the platform namespace | Renders the tenant gateway's `RequestAuthentication`, filters and telemetry, and, for every API's route, its allowed-API rule and backend lock (ADR-0013). Never created by hand. |
-| **Team settings** | annotations on the gateway request | Claim headers, correlation ID, access log, trace headers; validated by the policy child (ADR-0012). |
+| **Team settings** | four optional parameters of the gateway request | Claim headers, correlation ID, access log, trace headers; validated by the policy child (ADR-0012). |
+| **Version** | the required `version` parameter of the gateway request | The extension's semantic version (`MAJOR.MINOR.PATCH`) that the tenant's gateway and all its APIs use. The team changes it to move, test cluster first; the platform chooses which versions teams may use (ADR-0015). |
 
 Three words that are easy to confuse:
 
@@ -111,6 +112,6 @@ Three words that are easy to confuse:
 | Token check, header handling | Istio policies + hand-written `EnvoyFilter`s per team | Istio policies + platform-owned, tested filters, no Lua |
 | Rate limit | `EnvoyFilter` with Lua + a rate limit service per platform | a platform-owned filter + the rate limit service from the bootstrap chart |
 | Allowed-API rule | free text in values | derived from tenant and API name |
-| What the team writes | a full values file and an Argo CD app | one parameterless `TemplateInstance` per tenant; one `TemplateInstance` of `api` per API |
+| What the team writes | a full values file and an Argo CD app | one `TemplateInstance` per tenant, with four optional settings; one `TemplateInstance` of `api` per API |
 | Security switches | in the values file | none for the token check, the API rule or the headers; the rate limit and the backend lock per API, which the platform can lock per tenant |
-| Upgrade | each team, by hand | the platform, once |
+| Upgrade | each team, its own chart copy | the platform installs once; each team moves with one line, when it is ready |

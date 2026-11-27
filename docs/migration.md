@@ -29,7 +29,8 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
 |---|---|
 | Identity provider, realm chart, roles, callers' tokens | no |
 | Callers: address, path, token | no |
-| Callers' limits | no, except where today's tier lookup was wrong (step 3.c) |
+| Callers' status codes | two change: a path or method that no API serves gets `403`, not `404`; a token of an issuer the gateway doesn't trust gets `401`, not `403` (design §4). Callers and end-to-end checks that test those codes are updated (step 3.e) |
+| Callers' limits | no, except where today's tier lookup was wrong (step 3.c); counters start fresh at the move |
 | Backend code | no: it gets the same `x-sub` and `x-roles` values |
 | Backend namespace | joins the mesh, if it isn't in it yet (section 2); its waypoint label moves to the new waypoint at clean-up (step 3.h) |
 | Per-API gateway release | its backend lock turned off before the test (step 3.d); removed at the end (step 3.h) |
@@ -44,8 +45,12 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
       `auth.defaultIssuers` names it (ADR-0004).
     - `rateLimit.tiers`: the same rates as today's shared rate limit
       configuration (for example gold 100, silver 50, bronze 10 per second);
-      the failure mode as today (fail open, if that is today's choice).
-    - `rateLimit.redis.*`: the platform's Redis.
+      the failure mode as today (`rateLimit.failureModeAllow: true`, fail
+      open, the default).
+    - `rateLimit.redis.*`: the platform's Redis. If it is today's Redis, which
+      allows only today's rate limit service, add the new service's principal
+      (`cluster.local/ns/mto-api-gateways/sa/ratelimit`) to its access policy
+      first; today's service keeps working until the last API moves.
     - `gateway.sharedHosts`: the shared front host, with each tenant's path
       prefixes (ADR-0009). Grant a prefix that is **shorter** than the paths of
       today's per-API routes, and that the API's path is under segment by
@@ -53,18 +58,34 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
       `/orders` (see step 3.f).
     - `migration.legacyRoles`: for each API that moves, its old role name,
       for example `team-a.orders: api-orders-consumer` (ADR-0006).
-    - `migration.oldGateways`: for each API that moves, its old gateway's
-      service account principal, so the new lock lets both gateways pass while
-      they run side by side (ADR-0007).
+    - `migration.oldGateways`: for each backend Service of an API that
+      moves, the principals of **every** old gateway that calls it today, so
+      the new lock lets them all pass while they run side by side (ADR-0007).
+      One Service can be called by several old gateways.
+    - `backendLock.existingWaypoints`: each namespace that keeps today's
+      waypoint (for example `api-waypoint`, or one in another namespace), so
+      the extension renders no second one there (ADR-0007).
     - `backendLock.publicPaths`: the same open paths as today's
       `security.publicPaths` (default `/metrics`, `/health`, `/health/live`,
       `/health/ready`, `/healthz`).
     - `gateway.internalDomain` and `gateway.internalHosts`: the router's
       domain, and for each tenant the internal hosts of its APIs that callers
       use today (`<gateway>-<namespace>.<router domain>`) (ADR-0009).
-    - `rateLimit.service.*`, `monitoring.podMonitor.*` and
-      `telemetry.tracing.samplingPercentage`: the defaults are today's
-      values; change them only where today's differ.
+    - `rateLimit.service.*`, `monitoring.podMonitor.*`,
+      `gateway.autoscaling.*` and `telemetry.tracing.samplingPercentage`: the
+      defaults are today's values; change them only where today's differ (a
+      small test cluster may run one rate limit pod).
+    - Values whose defaults can't be today's, so set them here:
+      `correlationId.header` (today's header name),
+      `telemetry.accessLogProviders` (today's log providers),
+      `telemetry.tracing.enabled: true` (today's gateways trace every
+      request).
+1. **Label the extension's namespace** `mto-api-gateways` with the mesh's
+   discovery label and `istio.io/dataplane-mode: ambient` (design §10).
+1. **Check the cluster:** OpenShift 4.20 or later and the Service Mesh and
+   Template Operator floors (docs/support-matrix.md); Service Mesh upgrades
+   pinned (`Manual` approval or a pinned version); istiod trusts the issuers'
+   CA. The preflight checks most of this, and names what fails.
 1. **Check the mesh and the router** (already so where gateways share a host
    today):
     - Istio's key reload interval is 3 minutes (design §10).
@@ -76,12 +97,14 @@ backend path `/orders/v1`, Service `orders` port 80, and caller roles named
 1. **Backend namespaces in the mesh, with a waypoint.** The tenant's backend
    namespaces carry the ambient mesh label and `istio.io/use-waypoint`, set
    through the Multi-Tenant Operator `Tenant` (M5, ADR-0007). Keep today's
-   value (for example `api-waypoint`) during the move: the new lock is
-   enforced by whichever waypoint the namespace uses. A backend in a shared
+   value (for example `api-waypoint`, and `istio.io/use-waypoint-namespace`
+   for a waypoint in another namespace) during the move, and list the
+   namespace in `backendLock.existingWaypoints`: the new lock is enforced by
+   whichever waypoint the namespace uses. A backend in a shared
    namespace or outside the mesh moves with `backendLock: "off"`, as today's
    `allowDirectBackendAccess`.
 1. **Request the tenant gateway:** one `TemplateInstance` of `api-gateway`,
-   with annotations that repeat today's gateway settings (ADR-0012):
+   with parameters that repeat today's gateway settings (ADR-0012):
 
 ```yaml
 apiVersion: templates.v2.stakater.com/v2alpha1
@@ -89,12 +112,13 @@ kind: TemplateInstance
 metadata:
   name: api-gateway
   namespace: team-a-dev
-  annotations:
-    api-gateway.stakater.com/claim-headers: "client_id=x-client"   # today's extra claim headers
-    api-gateway.stakater.com/correlation-id: "on"                  # if today's gateway adds it
-    api-gateway.stakater.com/access-log: "json-default"            # today's log provider, from the platform list
 spec:
   templateRef: { name: api-gateway, namespace: mto-api-gateways }
+  parameters:
+    - { name: version,       value: "1.0.0" }                # required: the version the tenant uses
+    - { name: claimHeaders,  value: "client_id=x-client" }   # today's extra claim headers
+    - { name: correlationId, value: "on" }                   # if today's gateway adds it
+    - { name: accessLog,     value: json-default }           # today's log provider, from the platform list
 ```
 
 1. **Check its status:** `mto-api-gateway-status.api-gateway` says `ok`, and the settings are
@@ -112,6 +136,7 @@ provider's tokens.
 | Today's per-API values | `api` instance parameter |
 |---|---|
 | `gateway.hosts.external` (the shared host) | `host` |
+| `gateway.hosts.external: ""` (an API with only an internal host) | `host: "-"` with `internalHost` |
 | the internal host, when callers use it | `internalHost`: the old name, granted to the tenant |
 | `gateway.pathPrefix` | `path` |
 | `backend.internal.pathPrefix`, when different | `rewrite` |
@@ -152,6 +177,9 @@ conflict.
 | Tokens sent in the URL (`?access_token=`) | the old gateway's access log | the tenant gateway refuses them (M15): ask those callers to use the `Authorization` header first |
 | Callers on the old internal host (`<gateway>-<namespace>.<router domain>`) | the router's access log | grant the old name to the tenant and set `internalHost`; it moves in step 3.f |
 | Headers the backend reads | ask the API team | AC-MIG-3 compares them through both gateways |
+| Callers that test for `404` on an unknown path, or `403` for another issuer's token | the API team and the end-to-end checks | the tenant gateway answers `403` and `401` there: update those checks |
+| APIs that share a tenant but today use different claim headers or log formats | their values files | gateway settings are per tenant (design §12): agree on one set, or keep the old gateway (G.12) |
+| An API with no token check today (`auth.enabled: false`) | its values file | it can't move as it is (design §12) |
 
 ### 3.c Check the tiers
 
@@ -161,16 +189,24 @@ callers get the tier their role names. **Before such an API moves, its owner
 confirms the backend can take the higher rates.** If it can't, the API
 waits.
 
+Today's rule accepts any tier in a role name (`api-orders-consumer-*`). The
+tenant gateway accepts only the tiers the platform defines (ADR-0006). A
+caller whose role names another tier (for example `-platinum`) gets a
+defined tier role first, or it is refused after the move.
+
 ### 3.d Hand over the backend lock
 
 Today's lock is an `ALLOW` that lets only the old gateway through. While it
 exists, Istio refuses every request that no `ALLOW` matches, so it would also
-refuse the new gateway. So:
+refuse the new gateway. Several old gateways can call one backend Service,
+each with its own `ALLOW`. So:
 
-1. Check that the new lock exists (`api.orders.orders`) and lets both gateways
-   pass (`migration.oldGateways`).
-1. Turn off the old release's lock (`security.allowGatewayAccessOnly: false`,
-   `security.allowDirectBackendAccess: true`), but keep its waypoint: the
+1. Check that the new lock exists (`api.orders.orders`) and lets every
+   gateway that calls the Service pass (`migration.oldGateways` lists all of
+   their principals for that Service).
+1. Turn off the lock of **every** old release that calls that Service, in one
+   change (`security.allowGatewayAccessOnly: false`,
+   `security.allowDirectBackendAccess: true`), but keep the waypoint: the
    namespace still uses it.
 
 From then on the new lock guards the backend for both gateways, with the same
@@ -181,6 +217,10 @@ open paths; there is no moment without a lock.
 Before the switch, call the API through the tenant gateway with real tokens,
 one per tier, and compare with the old gateway: status codes, the tier limit,
 and the headers at the backend (AC-MIG-2, AC-MIG-3).
+
+Point the API's end-to-end runner at the tenant gateway too. Its `429` check
+assumes a bronze client: a client that gets its real, higher tier after the
+move (step 3.c) needs a longer burst.
 
 ### 3.f Switch: one change
 
@@ -210,13 +250,19 @@ takes the traffic again at once (AC-MIG-1).
 
 After the agreed period:
 
-1. Move the namespace's `istio.io/use-waypoint` label to
-   `mto-api-gateway-waypoint` (through the `Tenant`), and check the lock still
-   refuses `intruder`.
+1. If the namespace should use the extension's waypoint: move its
+   `istio.io/use-waypoint` label to `mto-api-gateway-waypoint`, and remove
+   `istio.io/use-waypoint-namespace` if it has one (both through the
+   `Tenant`), then remove the namespace from
+   `backendLock.existingWaypoints`; check the lock still refuses `intruder`.
+   If it keeps its waypoint, leave both as they are.
 1. Uninstall the per-API gateway release: its Lua filter, its policies, its
-   waypoint, its pods and its `Route`s. The label must move first, or the
-   namespace would point to a waypoint that no longer exists.
-1. Remove the API's entry from `migration.oldGateways`.
+   waypoint (unless the namespace keeps it), its pods and its `Route`s. The
+   label must move first, or the namespace would point to a waypoint that no
+   longer exists.
+1. Remove the old gateway's principal from `migration.oldGateways`.
+1. The realm chart's notes still mention `realmRevision`; the tenant gateway
+   doesn't need it (it reloads keys every 3 minutes).
 1. Move dashboards and alerts to the tenant gateway's names.
 
 ## 4. After all APIs of a tenant moved
@@ -226,6 +272,8 @@ After the agreed period:
   change: it changes every caller's token, and a realm import gives new
   signing keys (design §12, G.27). When it is done, remove the API's entry
   from `migration.legacyRoles`.
+- After the last API on the cluster moved: remove today's rate limit service,
+  and its entry in Redis' access policy.
 
 ## Open before the first production move
 
